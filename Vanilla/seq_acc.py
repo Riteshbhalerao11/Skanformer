@@ -27,6 +27,6 @@ datasets = Data.get_data(
 
 test_ds = datasets['test']
 
-test_accuracy_seq = sequence_accuracy(config,test_ds,tgt_itos,True, None,test_size=200)
+test_accuracy_seq = sequence_accuracy(config,test_ds,tgt_itos,True, None,test_size=len(test_ds))
 
 print(f"SEQUENCE ACCURACY : {test_accuracy_seq}")

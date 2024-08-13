@@ -1,5 +1,6 @@
 from dataclasses import dataclass, asdict
-from typing import Optional,List
+from typing import Optional, List
+
 
 @dataclass
 class TransformerConfig:
@@ -39,7 +40,7 @@ class TransformerConfig:
     nhead: int
 
     # Number of encoder layers in the transformer model
-    num_layers : int
+    num_layers: int
 
     # KAN dimensions
     ff_dims: List[int]
@@ -84,9 +85,6 @@ class TransformerConfig:
     # WandB run_id to resume
     run_id: Optional[str] = None
 
-    # # distributed training
-    # distributed: Optional[bool] = True
-
     backend: Optional[str] = 'nccl'
 
     # Size of vocabulary for source and target sequences
@@ -118,17 +116,17 @@ class TransformerConfig:
     test_freq: Optional[int] = 10
 
     # trucate sequences
-    truncate: Optional[bool]= False
+    truncate: Optional[bool] = False
 
     # if debug
     debug: Optional[bool] = False
-    
-    #to replace index and momentum
+
+    # to replace index and momentum
     to_replace: bool = False
 
-    #token pool sizes
-    index_pool_size : int = 100   
-    momentum_pool_size : int = 100
+    # token pool sizes
+    index_pool_size: int = 100
+    momentum_pool_size: int = 100
 
     def to_dict(self):
         return asdict(self)

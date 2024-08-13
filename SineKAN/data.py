@@ -1,3 +1,4 @@
+from fn_utils import causal_mask
 from torch.utils.data import Dataset
 import torch
 
@@ -51,13 +52,13 @@ class Data(Dataset):
         tgt_ids = self.tgt_vocab(tgt_tokenized)
 
         enc_num_padding_tokens = self.config.src_max_len - len(src_ids) - 2
-        dec_num_padding_tokens = self.config.tgt_max_len - len(tgt_ids) - 2
+        dec_num_padding_tokens = self.config.tgt_max_len - len(tgt_ids) - 1
 
         if self.config.truncate:
             if enc_num_padding_tokens < 0:
                 src_ids = src_ids[:self.config.src_max_len-2]
             if dec_num_padding_tokens < 0:
-                tgt_ids = tgt_ids[:self.config.tgt_max_len-2]
+                tgt_ids = tgt_ids[:self.config.tgt_max_len-1]
         else:
             if enc_num_padding_tokens < 0 or dec_num_padding_tokens < 0:
                 raise ValueError("Sentence is too long")
@@ -72,18 +73,30 @@ class Data(Dataset):
             ],
             dim=0,
         )
+
         tgt_tensor = torch.cat(
             [
                 self.bos_token,
                 torch.tensor(tgt_ids, dtype=torch.int64),
-                self.eos_token,
                 torch.tensor([self.pad_token] *
                              dec_num_padding_tokens, dtype=torch.int64),
             ],
             dim=0,
         )
 
-        return src_tensor, tgt_tensor
+        label = torch.cat(
+            [
+                torch.tensor(tgt_ids, dtype=torch.int64),
+                self.eos_token,
+                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+            ],
+            dim=0,
+        )
+
+        src_mask = (src_tensor != self.pad_token).unsqueeze(0).unsqueeze(0).int() # (1, 1, seq_len)
+        tgt_mask = (tgt_tensor != self.pad_token).unsqueeze(0).int() & causal_mask(tgt_tensor.size(0)) # (1, seq_len) & (1, seq_len, seq_len),
+
+        return src_tensor, tgt_tensor, label, src_mask, tgt_mask
 
     @staticmethod
     def get_data(df_train, df_test, df_valid, config, tokenizer, src_vocab,tgt_vocab):

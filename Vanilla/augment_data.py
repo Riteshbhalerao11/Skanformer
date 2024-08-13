@@ -109,7 +109,7 @@ def aug_data(df):
     return df_aug
 
 df_train, df_valid = train_test_split(
-    df, test_size=3000, random_state=args.seed)
+    df, test_size=5000, random_state=args.seed)
 
 df_train.reset_index(inplace=True, drop=True)
 
@@ -128,5 +128,6 @@ for split,df in data.items():
     # Save augmented data
     output_file_path = os.path.join(args.data_dir, file_name)
     df_aug = aug_data(df)
+    df_aug.drop_duplicates(inplace=True)
     df_aug.to_csv(output_file_path, index=False)
     print(f'--------{split} done-------')

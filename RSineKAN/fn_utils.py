@@ -1,5 +1,5 @@
 from config import TransformerConfig
-from model import Model
+from model import build_kanformer
 from tokenizer import Tokenizer
 import torch.distributed as dist
 import torch
@@ -7,8 +7,11 @@ import torch.nn as nn
 import random
 from typing import List
 from torch.nn.utils.rnn import pad_sequence
+from sklearn.model_selection import train_test_split
 import argparse
-
+import os
+import pickle
+import json
 
 # Special tokens & coressponding ids
 BOS_IDX, PAD_IDX, EOS_IDX, UNK_IDX, SEP_IDX = 0, 1, 2, 3, 4
@@ -26,54 +29,9 @@ def create_tokenizer(df, config, index_pool_size, momentum_pool_size):
 
 
 def init_distributed_mode(config):
-
     dist.init_process_group(backend=config.backend)
 
 
-def generate_eqn_mask(n: int, device: torch.device) -> torch.Tensor:
-    """
-    Generate an equation mask for the Transformer model.
-
-    Args:
-        n (int): The size of the mask.
-        device (torch.device): The device on which to create the mask.
-
-    Returns:
-        torch.Tensor: The equation mask.
-    """
-    mask = (torch.triu(torch.ones((n, n), device=device)) == 1).transpose(0, 1)
-    mask = mask.float().masked_fill(mask == 0, float(
-        '-inf')).masked_fill(mask == 1, float(0.0))
-    return mask
-
-
-def create_mask(src: torch.Tensor, tgt: torch.Tensor, device: torch.device) -> tuple:
-    """
-    Create masks for source and target sequences.
-
-    Args:
-        src (torch.Tensor): Source sequence.
-        tgt (torch.Tensor): Target sequence.
-        device (torch.device): Device on which to create the masks.
-
-    Returns:
-        tuple: Tuple containing four masks: source mask, target mask, source padding mask, target padding mask.
-    """
-    src_seq_len = src.shape[0]
-    tgt_seq_len = tgt.shape[0]
-
-    # Generate equation mask for target sequence
-    tgt_mask = generate_eqn_mask(tgt_seq_len, device)
-
-    # Create source mask
-    src_mask = torch.zeros((src_seq_len, src_seq_len),
-                           device=device).type(torch.bool)
-
-    # Create source and target padding masks
-    src_padding_mask = (src == PAD_IDX).transpose(0, 1)
-    tgt_padding_mask = (tgt == PAD_IDX).transpose(0, 1)
-
-    return src_mask, tgt_mask, src_padding_mask, tgt_padding_mask
 
 
 def generate_unique_random_integers(x, start=0, end=3000):
@@ -98,28 +56,9 @@ def src_decode(src: List[int], src_itos):
             out += src_itos[y]
     return out
 
-
-def collate_fn(batch: list) -> tuple:
-    """
-    Collate function for batching sequences.
-
-    Args:
-        batch (list): List of tuples containing source and target sequences.
-
-    Returns:
-        tuple: Tuple containing padded source batch and padded target batch.
-    """
-    src_batch, tgt_batch = [], []
-    for (src_sample, tgt_sample) in batch:
-        src_batch.append(src_sample)
-        tgt_batch.append(tgt_sample)
-
-    # Pad sequences in the batch
-    src_batch = pad_sequence(src_batch, padding_value=PAD_IDX)
-    tgt_batch = pad_sequence(tgt_batch, padding_value=PAD_IDX)
-
-    return src_batch, tgt_batch
-
+def causal_mask(size):
+    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
+    return mask == 0
 
 def calculate_line_params(point1, point2):
 
@@ -148,15 +87,12 @@ def get_model(config):
     Returns:
         Model: Initialized model object.
     """
-    model = Model(config.num_encoder_layers, config.num_decoder_layers, config.embedding_size,
-                  config.nhead, config.src_voc_size, config.tgt_voc_size, config.hidden_dim, config.dropout,
-                  ff_dims=config.ff_dims, device=config.device)
-
-    for n,p in model.named_parameters():
-        if (p.dim() > 1) and ("KAN" not in n):
-            nn.init.xavier_uniform_(p)
+    model = build_kanformer(config.src_voc_size, config.tgt_voc_size,config.src_max_len,config.tgt_max_len, 
+                            config.embedding_size, config.num_layers, 
+                            config.nhead,config.dropout,config.d_ff,config.ff_dims,config.device)
 
     return model
+
 
 def parse_ff_dims(ff_dims_str):
     return list(map(int, ff_dims_str.split(',')))
@@ -174,7 +110,7 @@ def parse_args():
                         help='Root directory for  checkpoints')
     parser.add_argument('--data_dir', type=str, required=True,
                         help='Data directory for data')
-    parser.add_argument('--device', type=str, default='cuda',
+    parser.add_argument('--device', type=str, default='cuda:0',
                         help='Device for training (e.g., "cuda" for GPU, "cpu" for CPU)')
     parser.add_argument('--epochs', type=int, required=True,
                         help='Total number of epochs for training')
@@ -188,20 +124,20 @@ def parse_args():
                         help='Number of worker processes for data loading')
     parser.add_argument('--embedding_size', type=int,
                         required=True, help='Dimensionality of word embeddings')
-    parser.add_argument('--hidden_dim', type=int, required=True,
-                        help='Dimensionality of hidden layers in the transformer model')
     parser.add_argument('--nhead', type=int, required=True,
                         help='Number of attention heads in the transformer model')
-    parser.add_argument('--num_encoder_layers', type=int, required=True,
-                        help='Number of encoder layers in the transformer model')
-    parser.add_argument('--num_decoder_layers', type=int, required=True,
-                        help='Number of decoder layers in the transformer model')
-    parser.add_argument('--warmup_ratio', type=float,
-                        required=True, help='Warmup ratio for learning rate')
-    parser.add_argument('--dropout', type=float,
-                        required=True, help='Dropout rate')
+    parser.add_argument('--num_layers', type=int, required=True,
+                        help='Number of encoder & decoder layers in the transformer model')
+    parser.add_argument('--d_ff', type=int, required=True,
+                        help='FFN dims')
     parser.add_argument('--ff_dims', type=parse_ff_dims, required=True, 
                         help='Feed-forward layer dimensions as a comma-separated list')
+    parser.add_argument('--warmup_ratio', type=float,
+                        required=True, help='Warmup ratio for learning rate')
+    parser.add_argument('--weight_decay', type=float,
+                        required=True, help='Weight decay for AdamW')
+    parser.add_argument('--dropout', type=float,
+                        required=True, help='Dropout rate')
     parser.add_argument('--src_max_len', type=int, required=True,
                         help='Maximum length of source sequences')
     parser.add_argument('--tgt_max_len', type=int, required=True,
@@ -279,13 +215,13 @@ def create_config_from_args(args):
         valid_batch_size=args.valid_batch_size,
         num_workers=args.num_workers,
         embedding_size=args.embedding_size,
-        hidden_dim=args.hidden_dim,
         nhead=args.nhead,
-        num_encoder_layers=args.num_encoder_layers,
-        num_decoder_layers=args.num_decoder_layers,
-        warmup_ratio=args.warmup_ratio,
-        dropout=args.dropout,
+        num_layers=args.num_layers,
+        d_ff = args.d_ff,
         ff_dims = args.ff_dims,
+        warmup_ratio=args.warmup_ratio,
+        weight_decay=args.weight_decay,
+        dropout=args.dropout,
         src_max_len=args.src_max_len,
         tgt_max_len=args.tgt_max_len,
         curr_epoch=args.curr_epoch,
@@ -313,5 +249,5 @@ def create_config_from_args(args):
         debug=args.debug,
         to_replace=args.to_replace,
         index_pool_size=args.index_pool_size,
-        momentum_pool_size=args.momentum_pool_size,
+        momentum_pool_size=args.momentum_pool_size
     )

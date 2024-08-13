@@ -48,7 +48,8 @@ if __name__ == '__main__':
     
     if config.debug:
         config.epochs = 1
-        df_train = df_train.sample(1000).reset_index(drop=True)
+        df_train = df_train.sample(100).reset_index(drop=True)
+        df_valid = df_valid.sample(100).reset_index(drop=True)
     
     print(f"TRAIN SAMPLES : {df_train.shape}")
     print("Data loading complete")

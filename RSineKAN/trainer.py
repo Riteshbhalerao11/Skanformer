@@ -67,7 +67,7 @@ class Predictor():
         self.model = get_model(config)
         self.checkpoint = f"{config.model_name}_best.pth" if load_best else f"{config.model_name}_ep{epoch+1}.pth"
         self.path = os.path.join(config.root_dir, self.checkpoint)
-        self.device = f"cuda:{config.device}"
+        self.device = f"cuda:{config.device}" if "cuda" not in str(config.device) else config.device
         state = torch.load(self.path, map_location=self.device)
         self.model.load_state_dict(state['state_dict'])
         self.model.to(self.device)
@@ -181,6 +181,7 @@ class Trainer():
             print(f"PROCESS ID : {int(os.environ['SLURM_PROCID'])} ; TORCH GLOBAL RANK : {self.global_rank} ; TORCH LOCAL RANK : {self.local_rank}")
         self.device = self.local_rank
         self.config = config
+        self.config.device = self.device
         self.is_master = self.local_rank == 0
         if self.is_master:
             wandb.login()
@@ -320,9 +321,9 @@ class Trainer():
             self.best_val_loss = np.array(self.valid_loss_list).min()
             self.optimizer.load_state_dict(state['optimizer'])
             
-            if state['decay_scheduler'] is not None:
+            if state['decay_scheduler'] is not None and self.lr_scheduler is not None:
                 self.lr_scheduler.load_state_dict(state['decay_scheduler'])
-            if state['warm_scheduler'] is not None:
+            if state['warm_scheduler'] is not None and self.warm_scheduler is not None:
                 self.warm_scheduler.load_state_dict(state['warm_scheduler'])
             self.global_step = state['global_step']
 

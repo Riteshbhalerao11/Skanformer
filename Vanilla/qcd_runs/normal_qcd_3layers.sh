@@ -19,36 +19,38 @@ module load pytorch/2.1.0-cu12
 nvidia-smi
 
 srun torchrun --standalone --nproc_per_node 2 main.py \
-    --project_name "RSineKANformer_QCD" \
+    --project_name "Transformer_QCD" \
     --run_name "run_aug_3layers_$SLURM_JOB_ID" \
-    --model_name "rsinekanformer" \
-    --root_dir "$SCRATCH/QCD/RSineKAN" \
+    --model_name "transformer" \
+    --root_dir "$SCRATCH/QCD" \
     --data_dir "$SCRATCH/QCD/data/QCD_small_normal" \
-    --device "cuda:0" \
-    --epochs 50 \
-    --training_batch_size 76 \
-    --test_batch_size 76 \
-    --valid_batch_size 76 \
+    --device "cuda" \
+    --epochs 100 \
+    --training_batch_size 72 \
+    --test_batch_size 72 \
+    --valid_batch_size 72 \
     --num_workers 32 \
     --embedding_size 512 \
+    --hidden_dim 4096 \
     --nhead 8 \
     --num_encoder_layers 3 \
     --num_decoder_layers 3 \
-    --hidden_dim 4096 \
-    --warmup_ratio 0 \
+    --warmup_ratio 0.06 \
     --dropout 0.1 \
-    --clip_grad_norm 0.1 \
+    --clip_grad_norm 2 \
     --src_max_len 896 \
     --tgt_max_len 896 \
-    --ff_dims 2048,1024,512 \
     --curr_epoch 0 \
-    --optimizer_lr 1e-4 \
+    --optimizer_lr 5e-5 \
     --is_constant_lr \
+    --update_lr 1e-5\
+    --resume_best True \
     --train_shuffle True \
     --pin_memory True \
     --world_size 2 \
     --save_freq 10 \
-    --test_freq 3 \
+    --test_freq 7 \
     --seed 42 \
     --log_freq 20 \
     --save_last True \
+

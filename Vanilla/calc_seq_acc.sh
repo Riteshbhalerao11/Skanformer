@@ -9,7 +9,7 @@ python seq_acc.py \
     --run_name "test" \
     --model_name "transformer" \
     --root_dir "$SCRATCH/QCD" \
-    --data_dir "$SCRATCH/QCD/data/QCD_small_aug" \
+    --data_dir "$SCRATCH/QCD/data/QCD_small_normal" \
     --device "cuda" \
     --epochs 50 \
     --training_batch_size 128 \

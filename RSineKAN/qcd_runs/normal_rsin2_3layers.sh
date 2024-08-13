@@ -3,7 +3,7 @@
 #SBATCH -A m4392
 #SBATCH -C gpu&hbm80g
 #SBATCH -q shared
-#SBATCH -t 16:00:00
+#SBATCH -t 09:30:00
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=2
@@ -19,10 +19,10 @@ module load pytorch/2.1.0-cu12
 nvidia-smi
 
 srun torchrun --standalone --nproc_per_node 2 main.py \
-    --project_name "SineKANformer_QCD" \
-    --run_name "run_aug_3layers_$SLURM_JOB_ID" \
-    --model_name "sinekanformer" \
-    --root_dir "$SCRATCH/QCD/SineKAN" \
+    --project_name "RSineKANformer_QCD" \
+    --run_name "run_normal_3layers_$SLURM_JOB_ID" \
+    --model_name "rsinekanformer" \
+    --root_dir "$SCRATCH/QCD/RSineKAN2" \
     --data_dir "$SCRATCH/QCD/data/QCD_small_normal" \
     --device "cuda" \
     --epochs 50 \
@@ -31,18 +31,19 @@ srun torchrun --standalone --nproc_per_node 2 main.py \
     --valid_batch_size 48 \
     --num_workers 32 \
     --embedding_size 512 \
-    --ff_dims 1024 \
+    --ff_dims 4096,2048,1024,512 \
+    --d_ff 4096 \
     --nhead 8 \
     --num_layers 3 \
-    --warmup_ratio 0.06 \
+    --warmup_ratio 0 \
     --clip_grad_norm 5 \
     --weight_decay 1e-3 \
-    --dropout 0.1 \
+    --dropout 0.05 \
     --src_max_len 896 \
     --tgt_max_len 896 \
     --curr_epoch 0 \
-    --optimizer_lr 1e-5 \
-    --is_constant_lr \
+    --optimizer_lr 5e-5 \
+    --resume_best True \
     --train_shuffle True \
     --pin_memory True \
     --world_size 2 \

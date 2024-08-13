@@ -1,5 +1,6 @@
 from dataclasses import dataclass, asdict
-from typing import List, Optional
+from typing import Optional, List
+
 
 @dataclass
 class TransformerConfig:
@@ -35,26 +36,26 @@ class TransformerConfig:
     # Dimensionality of word embeddings
     embedding_size: int
 
-    # Dimensionality of hidden layers in the transformer model
-    hidden_dim: int
-
     # Number of attention heads in the transformer model
     nhead: int
 
     # Number of encoder layers in the transformer model
-    num_encoder_layers: int
-
-    # Number of decoder layers in the transformer model
-    num_decoder_layers: int
-
-    # Warmup ratio for learning rate
-    warmup_ratio: float
+    num_layers: int
 
     # KAN dimensions
     ff_dims: List[int]
 
+    # FFN dims
+    d_ff: int
+
+    # Warmup ratio for learning rate
+    warmup_ratio: float
+
     # Dropout rate
     dropout: float
+
+    # Weight decay
+    weight_decay: float
 
     # Maximum length of source and target sequences
     src_max_len: int
@@ -87,9 +88,6 @@ class TransformerConfig:
     # WandB run_id to resume
     run_id: Optional[str] = None
 
-    # # distributed training
-    # distributed: Optional[bool] = True
-
     backend: Optional[str] = 'nccl'
 
     # Size of vocabulary for source and target sequences
@@ -121,17 +119,17 @@ class TransformerConfig:
     test_freq: Optional[int] = 10
 
     # trucate sequences
-    truncate: Optional[bool]= False
+    truncate: Optional[bool] = False
 
     # if debug
     debug: Optional[bool] = False
-    
-    #to replace index and momentum
+
+    # to replace index and momentum
     to_replace: bool = False
 
-    #token pool sizes
-    index_pool_size : int = 100   
-    momentum_pool_size : int = 100
+    # token pool sizes
+    index_pool_size: int = 100
+    momentum_pool_size: int = 100
 
     def to_dict(self):
         return asdict(self)
