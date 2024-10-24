@@ -18,4 +18,4 @@ module load pytorch/2.1.0-cu12
 
 nvidia-smi
 
-wandb agent ves_ritesh/Transformer_EW_2-2_niche_tuner/9akzureq --count 100
+wandb agent org/Project/id --count 100
