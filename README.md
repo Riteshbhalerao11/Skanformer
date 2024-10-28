@@ -17,9 +17,6 @@ This repository contains the source code for the above-mentioned title under the
 ├── Models/
 │   ├── SineKAN/
 │   └── vanilla/
-├── Tuners/
-│   ├── Tuner_SineKAN/
-│   └── Tuner_vanilla/
 ├── .gitignore
 └── README.md
 ```
@@ -40,11 +37,8 @@ This repository contains the source code for the above-mentioned title under the
    - `splitter.py`: Splits datasets into training, validation, and test sets, also limiting the sequence lengths.
 
 3. **Models/**  
-   This directory contains the architecture implementations of different models.
+   This directory contains the architecture implementations of different models along with training,inference & hyper parameter tuning scripts .
    - `SineKAN/`: Contains the implementation of the **S-KANformer** model.
    - `vanilla/`: Contains the vanilla version of the model architecture used as a baseline for comparison.
 
-4. **Tuners/**  
-   Contains hyperparameter tuning configurations and scripts for the models.
-   - `Tuner_SineKAN/`: Tuning configurations and scripts specific to the **SineKAN** model.
-   - `Tuner_vanilla/`: Tuning scripts for the baseline vanilla model.
+
