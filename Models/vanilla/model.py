@@ -148,4 +148,3 @@ class Model(nn.Module):
         """
         return self.transformer.decoder(self.positional_encoding(self.tgt_tok_emb(tgt)), memory, tgt_mask)
 
-

@@ -94,7 +94,7 @@ class Predictor():
         memory = self.model.encode(src, src_mask)
         memory = memory.to(self.device)
         ys = torch.ones(1, 1).fill_(start_symbol).type(torch.long).to(self.device)
-        for i in range(max_len - 1):
+        for _ in range(max_len - 1):
             tgt_mask =(causal_mask(ys.size(1)).type(torch.bool)).to(self.device)
             tgt_mask = tgt_mask.unsqueeze(0)
             out = self.model.decode(memory,src_mask,ys,tgt_mask)
@@ -122,7 +122,6 @@ class Predictor():
         self.model.eval()
 
         src = test_example[0]
-        num_tokens = src.shape[0]
 
         src_mask = test_example[3]
         tgt_tokens = self.greedy_decode(
@@ -224,7 +223,7 @@ class Trainer():
         Returns:
             Tensor: Loss value.
         """
-        loss_fn = torch.nn.CrossEntropyLoss()
+        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX, label_smoothing=0)
         return loss_fn(y_pred, y_true)
 
     def _prepare_model(self):
@@ -357,7 +356,7 @@ class Trainer():
         for src, tgt,label,src_mask, tgt_mask in pbar:
             src = src.to(self.device)
             tgt = tgt.to(self.device)
-            bs = src.size(1)
+            bs = src.size(0)
             src_mask = src_mask.to(self.device)
             tgt_mask = tgt_mask.to(self.device)
             label = label.to(self.device)
@@ -438,7 +437,7 @@ class Trainer():
             for src, tgt,label,src_mask, tgt_mask in pbar:
                 src = src.to(self.device)
                 tgt = tgt.to(self.device)
-                bs = src.size(1)
+                bs = src.size(0)
                 src_mask = src_mask.to(self.device)
                 tgt_mask = tgt_mask.to(self.device)
                 label = label.to(self.device)
