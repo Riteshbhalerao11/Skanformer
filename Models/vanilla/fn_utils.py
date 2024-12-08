@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import random
 from typing import List
+from torch.nn.utils.rnn import pad_sequence
 import argparse
 from datetime import timedelta
 
@@ -63,8 +64,8 @@ def create_mask(src: torch.Tensor, tgt: torch.Tensor, device: torch.device) -> t
         tuple: Tuple containing four masks: source mask, target mask, source padding mask, target padding mask.
     """
     # Adjust sequence length retrieval for batch-first tensors
-    src_seq_len = src.shape[0]
-    tgt_seq_len = tgt.shape[0]
+    src_seq_len = src.shape[1]
+    tgt_seq_len = tgt.shape[1]
 
     # Generate equation mask for target sequence
     tgt_mask = generate_eqn_mask(tgt_seq_len, device)
@@ -74,8 +75,8 @@ def create_mask(src: torch.Tensor, tgt: torch.Tensor, device: torch.device) -> t
 
     # Create source and target padding masks
     # Padding mask shapes should be (Batch, Seq_len) in batch-first mode
-    src_padding_mask = (src == PAD_IDX).transpose(0,1)
-    tgt_padding_mask = (tgt == PAD_IDX).transpose(0,1)
+    src_padding_mask = (src == PAD_IDX)
+    tgt_padding_mask = (tgt == PAD_IDX)
 
     return src_mask, tgt_mask, src_padding_mask, tgt_padding_mask
 

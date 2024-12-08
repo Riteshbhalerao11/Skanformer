@@ -52,7 +52,7 @@ def sequence_accuracy(config, test_ds, tgt_itos, load_best=True, epoch=None, tes
 
         # Convert tokens to list format and decode them into text
         original_tokens = original_tokens.detach().numpy().tolist()
-        predicted_tokens = predicted_tokens.detach().cpu().numpy().tolist()
+        predicted_tokens = predicted_tokens.detach().numpy().tolist()
         original = tgt_decode(original_tokens, tgt_itos)
         predicted = tgt_decode(predicted_tokens, tgt_itos)
 
@@ -101,13 +101,13 @@ class Predictor():
         Generate a sequence using greedy decoding.
 
         Args:
-            src (Tensor): Source input.
-            src_mask (Tensor): Mask for source input.
+            src (Tensor): Source input of shape (batch_size, src_len).
+            src_mask (Tensor): Mask for source input of shape (batch_size, src_len).
             max_len (int): Maximum length of the generated sequence.
             start_symbol (int): Start symbol for decoding.
 
         Returns:
-            Tensor: Generated sequence.
+            Tensor: Generated sequence of shape (batch_size, max_len).
         """
         src = src.to(self.device)
         src_mask = src_mask.to(self.device)
@@ -115,23 +115,28 @@ class Predictor():
         memory = self.model.encode(src, src_mask)
         memory = memory.to(self.device)
 
-        ys = torch.ones(1, 1).fill_(start_symbol).type(
-            torch.long).to(self.device)
+        ys = torch.ones(1, 1).fill_(start_symbol).long().to(self.device)
 
         for _ in range(max_len - 1):
-            tgt_mask = (generate_eqn_mask(ys.size(0), self.device).type(
-                torch.bool)).to(self.device)
+
+            tgt_mask = generate_eqn_mask(ys.size(1), self.device).type(torch.bool).to(self.device)
+        
             out = self.model.decode(ys, memory, tgt_mask)
-            out = out.transpose(0, 1)
-            prob = self.model.generator(out[:, -1])
+            
+            out = out[:, -1] 
 
+            prob = self.model.generator(out)  # Shape (batch_size, vocab_size)
+            
+            # Get the predicted next word for each example in the batch
             _, next_word = torch.max(prob, dim=1)
-            next_word = next_word.item()
 
-            ys = torch.cat([ys, torch.ones(1, 1).type_as(
-                src.data).fill_(next_word)], dim=0)
-            if next_word == EOS_IDX:
+            # Add the predicted next word to the output sequence
+            ys = torch.cat([ys, next_word.unsqueeze(1)], dim=1)
+            
+            # Check for EOS token to terminate early
+            if (next_word == EOS_IDX).all():
                 break
+
         return ys
 
     def predict(self, test_example, itos, raw_tokens=False):
@@ -147,15 +152,15 @@ class Predictor():
         """
         self.model.eval()
 
-        src = test_example[0].unsqueeze(1)
-        num_tokens = src.shape[0]
+        src = test_example[0].unsqueeze(0)
+        num_tokens = src.shape[1]
 
         src_mask = (torch.zeros(num_tokens, num_tokens)).type(torch.bool)
         tgt_tokens = self.greedy_decode(
             src, src_mask, max_len=self.max_len, start_symbol=BOS_IDX).flatten()
 
         if raw_tokens:
-            original_tokens = test_example[2]
+            original_tokens = test_example[1]
             return original_tokens, tgt_tokens
 
         decoded_eqn = ''
@@ -249,7 +254,7 @@ class Trainer():
         Returns:
             Tensor: Loss value.
         """
-        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX, label_smoothing=0)
+        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX)
         return loss_fn(y_pred, y_true)
 
     def _prepare_model(self):
@@ -377,14 +382,11 @@ class Trainer():
         total_samples = 0
 
         for src, tgt, label in pbar:
-            src = src.transpose(0,1)
-            tgt = tgt.transpose(0,1)
-            label = label.transpose(0,1)
             # Move inputs and labels to device
             src = src.to(self.device)  # src shape: (Batch, Src_seq_len)
             tgt = tgt.to(self.device)  # tgt shape: (Batch, Tgt_seq_len)
             label = label.to(self.device)  # label shape: (Batch, Tgt_seq_len)
-            bs = src.size(1)  # Batch size in batch-first mode
+            bs = src.size(0)  # Batch size in batch-first mode
 
             with torch.autocast(device_type='cuda', dtype=self.dtype):
                 # Create masks
@@ -464,14 +466,11 @@ class Trainer():
 
         with torch.no_grad():
             for src, tgt, label in pbar:
-                src = src.transpose(0,1)
-                tgt = tgt.transpose(0,1)
-                label = label.transpose(0,1)
                 # Move inputs to device
                 src = src.to(self.device)  # src shape: (Batch, Src_seq_len)
                 tgt = tgt.to(self.device)  # tgt shape: (Batch, Tgt_seq_len)
                 label = label.to(self.device) # label shape: (Batch, Tgt_seq_len)
-                bs = src.size(1)  # Batch size is the first dimension in batch-first mode
+                bs = src.size(0)  # Batch size is the first dimension in batch-first mode
 
                 
                 src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(
