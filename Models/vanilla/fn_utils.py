@@ -45,38 +45,37 @@ def generate_eqn_mask(n: int, device: torch.device) -> torch.Tensor:
     Returns:
         torch.Tensor: The equation mask.
     """
-    # Keep the mask generation the same, as it depends only on sequence length
     mask = (torch.triu(torch.ones((n, n), device=device)) == 1).transpose(0, 1)
-    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+    mask = mask.float().masked_fill(mask == 0, float(
+        '-inf')).masked_fill(mask == 1, float(0.0))
     return mask
 
 
 def create_mask(src: torch.Tensor, tgt: torch.Tensor, device: torch.device) -> tuple:
     """
-    Create masks for source and target sequences in a batch-first setup.
+    Create masks for source and target sequences.
 
     Args:
-        src (torch.Tensor): Source sequence (Batch, Seq_len).
-        tgt (torch.Tensor): Target sequence (Batch, Seq_len).
+        src (torch.Tensor): Source sequence.
+        tgt (torch.Tensor): Target sequence.
         device (torch.device): Device on which to create the masks.
 
     Returns:
         tuple: Tuple containing four masks: source mask, target mask, source padding mask, target padding mask.
     """
-    # Adjust sequence length retrieval for batch-first tensors
-    src_seq_len = src.shape[1]
-    tgt_seq_len = tgt.shape[1]
+    src_seq_len = src.shape[0]
+    tgt_seq_len = tgt.shape[0]
 
     # Generate equation mask for target sequence
     tgt_mask = generate_eqn_mask(tgt_seq_len, device)
 
-    # Create source mask (no causal mask needed for the source, so it's just zeros)
-    src_mask = torch.zeros((src_seq_len, src_seq_len), device=device).type(torch.bool)
+    # Create source mask
+    src_mask = torch.zeros((src_seq_len, src_seq_len),
+                           device=device).type(torch.bool)
 
     # Create source and target padding masks
-    # Padding mask shapes should be (Batch, Seq_len) in batch-first mode
-    src_padding_mask = (src == PAD_IDX)
-    tgt_padding_mask = (tgt == PAD_IDX)
+    src_padding_mask = (src == PAD_IDX).transpose(0, 1)
+    tgt_padding_mask = (tgt == PAD_IDX).transpose(0, 1)
 
     return src_mask, tgt_mask, src_padding_mask, tgt_padding_mask
 
@@ -102,6 +101,28 @@ def src_decode(src: List[int], src_itos):
         if y != PAD_IDX and y != BOS_IDX and y != EOS_IDX:
             out += src_itos[y]
     return out
+
+
+def collate_fn(batch: list) -> tuple:
+    """
+    Collate function for batching sequences.
+
+    Args:
+        batch (list): List of tuples containing source and target sequences.
+
+    Returns:
+        tuple: Tuple containing padded source batch and padded target batch.
+    """
+    src_batch, tgt_batch = [], []
+    for (src_sample, tgt_sample) in batch:
+        src_batch.append(src_sample)
+        tgt_batch.append(tgt_sample)
+
+    # Pad sequences in the batch
+    src_batch = pad_sequence(src_batch, padding_value=PAD_IDX)
+    tgt_batch = pad_sequence(tgt_batch, padding_value=PAD_IDX)
+
+    return src_batch, tgt_batch
 
 
 def calculate_line_params(point1, point2):
@@ -218,6 +239,7 @@ def parse_args():
                         help='Size of vocabulary for target sequences')
     parser.add_argument('--save_freq', type=int, default=3,
                         help='Epochs at which to save model checkpoints during training')
+    
     parser.add_argument('--seed', type=int, default=42,
                         help='Seed for reproducibility')
     parser.add_argument('--update_lr', type=float,
@@ -232,6 +254,8 @@ def parse_args():
                         help='Logging frequency')
     parser.add_argument('--test_freq', type=int, default=10,
                         help='Testing frequency')
+    parser.add_argument('--save_limit', type=int, default=5,
+                        help='Saving limit')
     parser.add_argument('--truncate', type=bool, default=False,
                         help='Truncate Sequences')
     parser.add_argument('--debug', type=bool, default=False,
@@ -286,6 +310,7 @@ def create_config_from_args(args):
         tgt_voc_size=args.tgt_voc_size,
         save_freq=args.save_freq,
         test_freq = args.test_freq,
+        save_limit=args.save_limit,
         seed=args.seed,
         update_lr=args.update_lr,
         end_lr=args.end_lr,

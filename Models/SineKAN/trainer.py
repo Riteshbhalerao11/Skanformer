@@ -94,7 +94,7 @@ class Predictor():
         memory = self.model.encode(src, src_mask)
         memory = memory.to(self.device)
         ys = torch.ones(1, 1).fill_(start_symbol).type(torch.long).to(self.device)
-        for i in range(max_len - 1):
+        for _ in range(max_len - 1):
             tgt_mask =(causal_mask(ys.size(1)).type(torch.bool)).to(self.device)
             tgt_mask = tgt_mask.unsqueeze(0)
             out = self.model.decode(memory,src_mask,ys,tgt_mask)
@@ -122,7 +122,6 @@ class Predictor():
         self.model.eval()
 
         src = test_example[0]
-        num_tokens = src.shape[0]
 
         src_mask = test_example[3]
         tgt_tokens = self.greedy_decode(
@@ -212,6 +211,8 @@ class Trainer():
         self.lr = config.update_lr
         self.global_step = 0
         self.tgt_itos = tgt_itos
+        self.ckp_paths = [file for file in os.listdir(config.root_dir) if 'best' not in file]
+        self.save_limit = config.save_limit
 
     def criterion(self, y_pred, y_true):
         """
@@ -357,7 +358,7 @@ class Trainer():
         for src, tgt,label,src_mask, tgt_mask in pbar:
             src = src.to(self.device)
             tgt = tgt.to(self.device)
-            bs = src.size(1)
+            bs = src.size(0)
             src_mask = src_mask.to(self.device)
             tgt_mask = tgt_mask.to(self.device)
             label = label.to(self.device)
@@ -438,7 +439,7 @@ class Trainer():
             for src, tgt,label,src_mask, tgt_mask in pbar:
                 src = src.to(self.device)
                 tgt = tgt.to(self.device)
-                bs = src.size(1)
+                bs = src.size(0)
                 src_mask = src_mask.to(self.device)
                 tgt_mask = tgt_mask.to(self.device)
                 label = label.to(self.device)
@@ -462,6 +463,7 @@ class Trainer():
             checkpoint_name (str): Name of the checkpoint file.
         """
         state_dict = self.ddp_model.module.state_dict()
+        ckp_path = os.path.join(self.root_dir, checkpoint_name)
         torch.save({
             "epoch": self.current_epoch + 1,
             "state_dict": state_dict,
@@ -471,7 +473,18 @@ class Trainer():
             "train_loss_list": self.train_loss_list,
             "valid_loss_list": self.valid_loss_list,
             "global_step": self.global_step
-        }, os.path.join(self.root_dir, checkpoint_name))
+        }, ckp_path)
+
+        if "best" not in  checkpoint_name:
+            self.ckp_paths.append(ckp_path)
+        
+        # Remove oldest checkpoint if exceeding save_limit
+        if len(self.ckp_paths) > self.save_limit:
+            oldest_checkpoint = self.ckp_paths.pop(0)
+            if os.path.exists(oldest_checkpoint):
+                os.remove(oldest_checkpoint)
+                print(f"Deleted old checkpoint: {oldest_checkpoint}")
+        
 
     def _test_seq_acc(self, load_best=True, epochs=None):
         """

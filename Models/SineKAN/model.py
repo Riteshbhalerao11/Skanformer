@@ -1,85 +1,106 @@
-import torch
-import torch.nn as nn
-from torch.nn import Transformer
-from torch import Tensor
+import gc
 import math
 from typing import List, Union
 
-def forward_step(i_n, grid_size, A, K, C):
-    ratio = A * grid_size**(-K) + C
-    i_n1 = ratio * i_n
-    return i_n1
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+from torch.nn import Transformer
+
 
 class SineKANLayer(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, device: Union[str, int] = 'cpu', grid_size=8, is_first=False, add_bias=True, norm_freq=True):
-        super(SineKANLayer, self).__init__()
+    def __init__(self, input_dim, output_dim, device: Union[str, int] = 'cuda' , grid_size=8, is_first=False, add_bias=True):
+        super(SineKANLayer,self).__init__()
         self.grid_size = grid_size
         self.device = device
         self.is_first = is_first
         self.add_bias = add_bias
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.A, self.K, self.C = 0.9724108095811765, 0.9884401790754128, 0.999449553483052
+        self.alpha = torch.nn.Parameter(torch.ones(1))
 
         self.grid_norm_factor = (torch.arange(grid_size) + 1)
         self.grid_norm_factor = self.grid_norm_factor.reshape(1, 1, grid_size)
 
         if is_first:
-            self.amplitudes = torch.nn.Parameter(torch.empty(
-                output_dim, input_dim, 1).normal_(0, .4) / output_dim / self.grid_norm_factor)
+            self.amplitudes = torch.nn.Parameter(torch.empty(output_dim, input_dim, 1).normal_(0, .4) / output_dim  / self.grid_norm_factor)
         else:
-            self.amplitudes = torch.nn.Parameter(torch.empty(
-                output_dim, input_dim, 1).uniform_(-1, 1) / output_dim / self.grid_norm_factor)
+            self.amplitudes = torch.nn.Parameter(torch.empty(output_dim, input_dim, 1).uniform_(-1, 1) / output_dim  / self.grid_norm_factor)
 
-        grid_phase = torch.arange(
-            1, grid_size + 1).reshape(1, 1, 1, grid_size) / (grid_size + 1)
-        self.input_phase = torch.linspace(
-            0, math.pi, input_dim).reshape(1, 1, input_dim, 1).to(device)
-        phase = grid_phase.to(device) + self.input_phase
+        grid_phase = torch.arange(1, grid_size + 1).reshape(1, 1, 1, grid_size)
+        input_phase = torch.linspace(0, math.pi, input_dim).reshape(1, 1, input_dim, 1).to(device)
+        self.register_buffer('grid_phase', grid_phase)
+        self.register_buffer('input_phase', input_phase)
 
-        if norm_freq:
-            self.freq = torch.nn.Parameter(torch.arange(
-                1, grid_size + 1).float().reshape(1, 1, 1, grid_size) / (grid_size + 1)**(1 - is_first))
-        else:
-            self.freq = torch.nn.Parameter(torch.arange(
-                1, grid_size + 1).float().reshape(1, 1, 1, grid_size))
+        self.omega_naught = torch.nn.Parameter(torch.ones(1, 1, 1, 1))
+        self.delta_omega = torch.nn.Parameter(torch.ones(1, 1, 1, 1) / grid_size)
 
-        for i in range(1, self.grid_size):
-            phase = forward_step(phase, i, self.A, self.K, self.C)
-        # self.phase = torch.nn.Parameter(phase)
-        self.register_buffer('phase', phase)
+        omega_grid = torch.arange(0, self.grid_size).reshape(1, 1, 1, grid_size)
+        self.register_buffer('omega_grid', omega_grid)
 
         if self.add_bias:
-            self.bias = torch.nn.Parameter(
-                torch.ones(1, output_dim) / output_dim)
+            self.bias  = torch.nn.Parameter(torch.ones(1, output_dim) / output_dim)
 
     def forward(self, x):
         x_shape = x.shape
         output_shape = x_shape[0:-1] + (self.output_dim,)
         x = torch.reshape(x, (-1, self.input_dim))
         x_reshaped = torch.reshape(x, (x.shape[0], 1, x.shape[1], 1))
-        s = torch.sin(x_reshaped * self.freq + self.phase)
+        s = torch.sin((self.omega_grid * self.delta_omega + self.omega_naught) * x_reshaped + self.grid_phase * self.alpha + self.input_phase)
         y = torch.einsum('ijkl,jkl->ij', s, self.amplitudes)
         if self.add_bias:
             y += self.bias
         y = torch.reshape(y, output_shape)
         return y
-    
-class KANFeedForwardBlock(nn.Module):
+        
+    def grid_expand(self, new_grid_size=1):
+        # Create a new instance of SineKANLayer with the new grid size
+        new_layer = SineKANLayer(self.input_dim, self.output_dim, self.device, new_grid_size,
+                                 is_first=self.is_first, add_bias=self.add_bias).to(self.device)
 
-    def __init__(self, in_size: int, ff_dims: List[int], grid_size: int = 8, device: Union[str, int] = 'cpu') -> None:
+        # Rescale the amplitudes and place them in the new layer's grid
+        rescaled_amplitudes = self.amplitudes                        
+        new_amplitudes = torch.zeros_like(new_layer.amplitudes, device=self.device)
+        new_amplitudes[:, :, :self.grid_size] = rescaled_amplitudes[:, :, :self.grid_size if self.grid_size < new_grid_size else new_grid_size]
+
+
+        # Copy value to the new layer
+        new_layer.amplitudes.data.copy_(new_amplitudes)
+        new_layer.delta_omega.data.copy_(self.delta_omega)
+        new_layer.omega_naught.data.copy_(self.omega_naught)
+        new_layer.alpha.data.copy_(self.alpha)
+
+        return new_layer
+
+class KANFeedForwardBlock(nn.Module):
+    def __init__(self, in_size: int, ff_dims: List[int], grid_size: int = 8, device: Union[str, int] = 'cuda') -> None:
         super().__init__()
         self.ffn = torch.nn.ModuleList()
-        local_ff_dims = ff_dims.copy()
-        for i, d in enumerate(local_ff_dims):
+        for i,d in enumerate(ff_dims):
             self.ffn.append(SineKANLayer(
                 in_size, d, grid_size=grid_size, device=device, is_first=(i == 0)))
             in_size = d
-
+        
     def forward(self, x):
         for f in self.ffn:
             x = f(x)
         return x
+
+    def grid_expand(self, new_grid_size):
+        # Create new upscaled layers and replace the old layers
+        new_layers = []
+        for layer in self.ffn:
+            new_layer = layer.grid_expand(new_grid_size=new_grid_size)  # Reinitialize the layer with a larger grid
+            new_layers.append(new_layer)
+
+        # Replace the old layers with the new upscaled ones
+        self.layers = torch.nn.ModuleList(new_layers)
+        if self.device == 'cpu':
+            gc.collect()
+        else:
+            torch.cuda.empty_cache()
+
 
 class LayerNormalization(nn.Module):
 
@@ -245,7 +266,7 @@ class DecoderBlock(nn.Module):
         self.self_attention_block = self_attention_block
         self.cross_attention_block = cross_attention_block
         self.ff_block = feed_forward_block
-        self.residual_connections = nn.ModuleList([ResidualConnection(features, dropout) for _ in range(3)])
+        self.residual_connections = nn.ModuleList([ResidualConnection(features, dropout) for _ in range(2)]) if is_kan else nn.ModuleList([ResidualConnection(features, dropout) for _ in range(3)])
         self.is_kan = is_kan
 
     def forward(self, x, encoder_output, src_mask, tgt_mask):
@@ -308,7 +329,7 @@ class Transformer(nn.Module):
         return self.projection_layer(x)
     
 def build_kanformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int=512, 
-                      N: int=6, h: int=8, dropout: float=0.1, d_ff: int=2048, ff_dims: List[int]=[2048,1024,512], device: Union[str, int] = 'cpu') -> Transformer:
+                      N: int=3, h: int=8, dropout: float=0.1, d_ff: int=4096, ff_dims: List[int]=[8192], device: Union[str, int] = 'cuda') -> Transformer:
     # Create the embedding layers
     src_embed = InputEmbeddings(d_model, src_vocab_size)
     tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)

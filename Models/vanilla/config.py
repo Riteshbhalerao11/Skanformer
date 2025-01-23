@@ -120,6 +120,8 @@ class TransformerConfig:
     # test frequency
     test_freq: Optional[int] = 10
 
+    save_limit: Optional[int] = 5
+
     # trucate sequences
     truncate: Optional[bool]= False
 

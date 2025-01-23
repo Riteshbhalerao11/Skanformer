@@ -191,6 +191,8 @@ def parse_args():
                         help='Logging frequency')
     parser.add_argument('--test_freq', type=int, default=10,
                         help='Testing frequency')
+    parser.add_argument('--save_limit', type=int, default=5,
+                        help='Saving limit')
     parser.add_argument('--truncate', type=bool, default=False,
                         help='Truncate Sequences')
     parser.add_argument('--debug', type=bool, default=False,
@@ -245,6 +247,7 @@ def create_config_from_args(args):
         src_voc_size=args.src_voc_size,
         tgt_voc_size=args.tgt_voc_size,
         save_freq=args.save_freq,
+        save_limit=args.save_limit,
         test_freq = args.test_freq,
         seed=args.seed,
         update_lr=args.update_lr,

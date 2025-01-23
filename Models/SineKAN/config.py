@@ -102,6 +102,8 @@ class TransformerConfig:
     # Epochs at which to save model checkpoints during training
     save_freq: Optional[int] = 3
 
+    save_limit: Optional[int] = 5
+
     # Seed for reproducibility
     seed: Optional[int] = 42
 
