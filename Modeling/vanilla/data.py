@@ -1,7 +1,7 @@
 from torch.utils.data import Dataset
 import torch
 
-from constants import BOS_IDX, PAD_IDX, EOS_IDX
+from ..constants import BOS_IDX, PAD_IDX, EOS_IDX
 
 class Data(Dataset):
     """

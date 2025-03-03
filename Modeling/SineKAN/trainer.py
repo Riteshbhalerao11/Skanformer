@@ -9,7 +9,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import wandb
 import numpy as np
 
-from constants import BOS_IDX, PAD_IDX, EOS_IDX
+from ..constants import BOS_IDX, PAD_IDX, EOS_IDX
 
 def sequence_accuracy(config,test_ds,tgt_itos,load_best=True, epoch=None,test_size=100):
     """
