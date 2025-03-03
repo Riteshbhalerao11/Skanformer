@@ -43,5 +43,8 @@ This repository contains the source code for the above-mentioned title under the
    This directory contains the architecture implementations of different models along with training,inference & hyper parameter tuning scripts .
    - `SineKAN/`: Contains the implementation of the **S-KANformer** model.
    - `vanilla/`: Contains the vanilla version of the model architecture used as a baseline for comparison.
+   - `constants.py`: Contains global constants such as special indices.
+   - `tokenizer.py`: Contains implementation for a custom tokeniser.
+   - `prefix_tokenizer.py`: Contains implementation for a custom tokeniser with prefix-conversion.
 
 
