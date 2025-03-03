@@ -14,9 +14,12 @@ This repository contains the source code for the above-mentioned title under the
 │   ├── augment_data.py
 │   ├── sequence_count.py
 │   └── splitter.py
-├── Models/
+├── Modelling/
 │   ├── SineKAN/
-│   └── vanilla/
+│   |── vanilla/
+|   ├── constants.py
+|   ├── tokenizer.py
+|   └── prefix_tokenizer.py
 ├── .gitignore
 └── README.md
 ```
