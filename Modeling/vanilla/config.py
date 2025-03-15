@@ -54,7 +54,7 @@ class TransformerConfig:
     # Distributed training
     world_size: int
     backend: Optional[str] = "nccl"  # Backend for distributed training
-    resume_best: bool
+    resume_best: bool = False
     run_id: Optional[str] = None  # WandB run_id to resume
 
     # Vocabulary

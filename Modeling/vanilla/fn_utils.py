@@ -12,7 +12,7 @@ from config import TransformerConfig
 from constants import BOS_IDX, EOS_IDX, PAD_IDX, SPECIAL_SYMBOLS, UNK_IDX
 from model import Model
 from prefix_tokenizer import PrefixTokenizer
-from ..tokenizer import Tokenizer
+from tokenizer import Tokenizer
 
 def create_tokenizer(df, config, index_pool_size, momentum_pool_size):
     """Create a tokenizer and build source and target vocabularies."""

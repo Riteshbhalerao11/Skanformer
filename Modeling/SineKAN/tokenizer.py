@@ -28,6 +28,7 @@ class Tokenizer:
         self.pattern_momentum = re.compile(r'\b[ijkl]_\d{1,}\b')
         self.pattern_num_123 = re.compile(r'\b(?![ps]_)\w+_\d{1,}\b')
         self.pattern_special = re.compile(r'\b\w+_+\w+\b\\')
+        self.pattern_underscore_curly = re.compile(r'\b\w+_{')
         self.pattern_prop = re.compile(r'Prop')
         self.pattern_int = re.compile(r'int\{')
         self.pattern_operators = {
@@ -92,13 +93,23 @@ class Tokenizer:
         num_123_mapping = {match: next(token_cycle) for match in set(self.pattern_num_123.findall(ampl))}
         for key, value in num_123_mapping.items():
             temp_ampl = temp_ampl.replace(key, value)
-        
+
+        # Replace pattern index tokens
+        pattern_index_mapping = {match: f"{'_'.join(match.split('_')[:-1])} {next(token_cycle)}"
+                for match in set(self.pattern_index.findall(ampl))
+            }
+        for key, value in pattern_index_mapping.items():
+            temp_ampl = temp_ampl.replace(key, value)
+            
         return temp_ampl
     
     def src_tokenize(self, ampl, seed):
         """Tokenize source expression, optionally applying replacements."""
         temp_ampl = self.src_replace(ampl, seed) if self.to_replace else ampl
         temp_ampl = temp_ampl.replace('\\\\', '\\').replace('\\', ' \\ ').replace('%', '')
+
+        temp_ampl = self.pattern_underscore_curly.sub(lambda match: f' {match.group(0)} ', temp_ampl)
+
         
         for symbol, pattern in self.pattern_operators.items():
             temp_ampl = pattern.sub(f' {symbol} ', temp_ampl)

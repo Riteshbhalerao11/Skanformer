@@ -1,7 +1,10 @@
+import sys
+sys.path.append("..")
+
 from config import TransformerConfig
 from model import build_kanformer
-from ..tokenizer import Tokenizer
-from ..prefix_tokenizer import PrefixTokenizer
+from tokenizer import Tokenizer
+from prefix_tokenizer import PrefixTokenizer
 import torch.distributed as dist
 import torch
 import random
@@ -9,7 +12,7 @@ from typing import List
 import argparse
 from datetime import timedelta
 
-from ..constants import BOS_IDX, PAD_IDX, EOS_IDX, UNK_IDX, SPECIAL_SYMBOLS
+from constants import BOS_IDX, PAD_IDX, EOS_IDX, UNK_IDX, SPECIAL_SYMBOLS
 
 def create_tokenizer(df, config, index_pool_size, momentum_pool_size):
     """Create a tokenizer and build source and target vocabularies."""
