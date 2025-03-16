@@ -1,7 +1,4 @@
-import sys
-sys.path.append("..")
-
-from config import TransformerConfig
+from config import SkanformerConfig
 from model import build_kanformer
 from tokenizer import Tokenizer
 from prefix_tokenizer import PrefixTokenizer
@@ -16,10 +13,8 @@ from constants import BOS_IDX, PAD_IDX, EOS_IDX, UNK_IDX, SPECIAL_SYMBOLS
 
 def create_tokenizer(df, config, index_pool_size, momentum_pool_size):
     """Create a tokenizer and build source and target vocabularies."""
-    if config.is_prefix:
-        tokenizer = PrefixTokenizer(df, SPECIAL_SYMBOLS, UNK_IDX)
-    else:
-        tokenizer = Tokenizer(df, index_pool_size, momentum_pool_size, SPECIAL_SYMBOLS, UNK_IDX, config.to_replace)
+    
+    tokenizer = Tokenizer(df, index_pool_size, momentum_pool_size, SPECIAL_SYMBOLS, UNK_IDX, config.to_replace)
     
     src_vocab = tokenizer.build_src_vocab(config.seed)
     src_itos = {value: key for key, value in src_vocab.get_stoi().items()}
@@ -118,8 +113,9 @@ def parse_args():
 
     # Training Control
     parser.add_argument('--curr_epoch', type=int, required=True, help='Current epoch (resume training)')
-    parser.add_argument('--train_shuffle', type=bool, default=False, help='Shuffle training data')
-    parser.add_argument('--valid_shuffle', type=bool, default=False, help='Shuffle test data')
+    parser.add_argument('--train_shuffle', type=bool, default=True, help='Shuffle training data')
+    parser.add_argument('--valid_shuffle', type=bool, default=True, help='Shuffle test data')
+    parser.add_argument('--use_half_precision', type=bool, default=False, help='Enable half precision training')
     parser.add_argument('--pin_memory', type=bool, default=False, help='Enable pinned memory for dataloader')
     parser.add_argument('--world_size', type=int, default=1, help='Processes for distributed training')
     parser.add_argument('--resume_best', type=bool, default=False, help='Resume best model checkpoint')
@@ -148,7 +144,7 @@ def parse_args():
 
 
 def create_config_from_args(args):
-    return TransformerConfig(
+    return SkanformerConfig(
         project_name=args.project_name,
         run_name=args.run_name,
         model_name=args.model_name,
@@ -172,7 +168,6 @@ def create_config_from_args(args):
         curr_epoch=args.curr_epoch,
         optimizer_lr=args.optimizer_lr,
         is_constant_lr = args.is_constant_lr,
-        is_prefix = args.is_prefix,
         use_half_precision=args.use_half_precision,
         train_shuffle=args.train_shuffle,
         valid_shuffle=args.valid_shuffle,

@@ -29,7 +29,7 @@ df = pd.concat([df_train, df_valid, df_test]).reset_index(drop=True)
 
 # Create tokenizer and vocabularies
 tokenizer, src_vocab, tgt_vocab, src_itos, tgt_itos = create_tokenizer(
-    df, config, config.index_pool_size, config.momentum_pool_size,
+    df, config, config.index_pool_size, config.momentum_pool_size, is_old=False,
 )
 config.src_voc_size = len(src_vocab)
 config.tgt_voc_size = len(tgt_vocab)

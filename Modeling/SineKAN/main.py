@@ -7,9 +7,6 @@ import torch
 from trainer import Trainer
 import os
 
-import sys
-sys.path.append("..")
-
 
 def main(config, df_train,df_test,df_valid,tokenizer,src_vocab,tgt_vocab,tgt_itos):
     print(config.to_dict())

@@ -16,10 +16,8 @@ from tokenizer import Tokenizer
 
 def create_tokenizer(df, config, index_pool_size, momentum_pool_size):
     """Create a tokenizer and build source and target vocabularies."""
-    if config.is_prefix:
-        tokenizer = PrefixTokenizer(df, SPECIAL_SYMBOLS, UNK_IDX)
-    else:
-        tokenizer = Tokenizer(df, index_pool_size, momentum_pool_size, SPECIAL_SYMBOLS, UNK_IDX, config.to_replace)
+
+    tokenizer = Tokenizer(df, index_pool_size, momentum_pool_size, SPECIAL_SYMBOLS, UNK_IDX, config.to_replace)
     
     src_vocab = tokenizer.build_src_vocab(config.seed)
     src_itos = {value: key for key, value in src_vocab.get_stoi().items()}
@@ -192,7 +190,6 @@ def parse_args():
     # Training state
     parser.add_argument("--curr_epoch", type=int, required=True, help="Current epoch (for resuming)")
     parser.add_argument("--use_half_precision", action="store_true", help="Enable FP16 training")
-    parser.add_argument("--is_prefix", action="store_true", help="Enable prefix-based expressions")
 
     # Data loading
     parser.add_argument("--train_shuffle", type=bool, default=False, help="Shuffle training data")
@@ -278,7 +275,6 @@ def create_config_from_args(args):
         log_freq=args.log_freq,
         debug=args.debug,
         to_replace=args.to_replace,
-        is_prefix=args.is_prefix,
         index_pool_size=args.index_pool_size,
         momentum_pool_size=args.momentum_pool_size
     )

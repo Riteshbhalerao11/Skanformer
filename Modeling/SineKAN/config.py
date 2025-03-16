@@ -1,8 +1,8 @@
 from dataclasses import dataclass, asdict
-from typing import Optional, List
+from typing import Optional,List
 
 @dataclass
-class TransformerConfig:
+class SkanformerConfig:
     """Configuration settings for Skanformer training."""
 
     # Project & Run Information
@@ -41,7 +41,6 @@ class TransformerConfig:
 
     # Training Control
     curr_epoch: int
-    is_prefix: bool
     use_half_precision: bool
     train_shuffle: bool
     valid_shuffle: bool
@@ -71,4 +70,65 @@ class TransformerConfig:
 
     def to_dict(self):
         """Convert dataclass to dictionary."""
+        return asdict(self)
+
+
+@dataclass
+class SkanformerTestConfig:
+
+    # Model name
+    model_name: str
+
+    # Directory where data and model checkpoints will be stored
+    root_dir: str
+
+    data_dir: str
+    # Device for training (e.g., "cuda" for GPU, "cpu")
+    device: str
+
+    # Dimensionality of word embeddings
+    embedding_size: int
+
+    # Number of attention heads in the transformer model
+    nhead: int
+
+    # Number of encoder layers in the transformer model
+    num_layers : int
+
+    # KAN dimensions
+    ff_dims: List[int]
+
+    # FFN dims
+    d_ff: int
+
+    # Dropout rate
+    dropout: float
+
+
+    # Maximum length of source and target sequences
+    src_max_len: int
+    tgt_max_len: int
+
+
+    # Size of vocabulary for source and target sequences
+    src_voc_size: Optional[int] = None
+    tgt_voc_size: Optional[int] = None
+
+    # Seed for reproducibility
+    seed: Optional[int] = 42
+
+    # trucate sequences
+    truncate: Optional[bool]= False
+
+    # if debug
+    debug: Optional[bool] = False
+    
+    #to replace index and momentum
+    to_replace: bool = False
+
+    #token pool sizes
+    index_pool_size : int = 100   
+    momentum_pool_size : int = 100
+
+    def to_dict(self):
         return asdict(self)

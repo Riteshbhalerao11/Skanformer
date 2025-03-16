@@ -2,7 +2,7 @@ from fn_utils import causal_mask
 from torch.utils.data import Dataset
 import torch
 
-from constants import EOS_IDX,BOS_IDX,PAD_IDX
+from constants import BOS_IDX, PAD_IDX, EOS_IDX
 
 class Data(Dataset):
     """

@@ -17,9 +17,6 @@ This repository contains the source code for the above-mentioned title under the
 ├── Modelling/
 │   ├── SineKAN/
 │   |── vanilla/
-|   ├── constants.py
-|   ├── tokenizer.py
-|   └── prefix_tokenizer.py
 ├── .gitignore
 └── README.md
 ```
@@ -36,15 +33,11 @@ This repository contains the source code for the above-mentioned title under the
 2. **Data_preprocess/**  
    This folder contains scripts for preprocessing the generated data before tokenization.
    - `normalize_data.py`: Replaces & normalizes the MARTY-generated indices in the sequences with custom numbered indices to limit the total number of tokens in vocabulary and bring uniformity.    
-   - `sequence_count.py`: Processes and counts sequence data, useful for model input preparation.
-   - `splitter.py`: Splits datasets into training, validation, and test sets, also limiting the sequence lengths.
 
 3. **Models/**  
    This directory contains the architecture implementations of different models along with training,inference & hyper parameter tuning scripts .
    - `SineKAN/`: Contains the implementation of the **S-KANformer** model.
-   - `vanilla/`: Contains the vanilla version of the model architecture used as a baseline for comparison.
-   - `constants.py`: Contains global constants such as special indices.
-   - `tokenizer.py`: Contains implementation for a custom tokeniser.
-   - `prefix_tokenizer.py`: Contains implementation for a custom tokeniser with prefix-conversion.
+   - `vanilla/`: Contains the vanilla transformer model used as a baseline for comparison.
+
 
 

@@ -78,10 +78,72 @@ class TransformerConfig:
 
     # Additional features
     to_replace: bool = False  # Replace index/momentum terms
-    is_prefix: bool = False  # Use prefix-based tokenization
     index_pool_size: int = 100  # Index token pool size
     momentum_pool_size: int = 100  # Momentum token pool size
 
     def to_dict(self):
         """Convert configuration to a dictionary."""
+        return asdict(self)
+
+
+
+@dataclass
+class TransformerTestConfig:
+
+    # Model name
+    model_name: str
+
+    # Directory where data and model checkpoints will be stored
+    root_dir: str
+
+    data_dir: str
+
+    # Device for training (e.g., "cuda" for GPU, "cpu")
+    device: str
+
+    # Dimensionality of word embeddings
+    embedding_size: int
+
+    # Dimensionality of hidden layers in the transformer model
+    hidden_dim: int
+
+    # Number of attention heads in the transformer model
+    nhead: int
+
+    # Number of encoder layers in the transformer model
+    num_encoder_layers: int
+
+    # Number of decoder layers in the transformer model
+    num_decoder_layers: int
+
+    # Dropout rate
+    dropout: float
+    
+    # Maximum length of source and target sequences
+    src_max_len: int
+    tgt_max_len: int
+
+
+    # Size of vocabulary for source and target sequences
+    src_voc_size: Optional[int] = None
+    tgt_voc_size: Optional[int] = None
+
+    # Seed for reproducibility
+    seed: Optional[int] = 42
+
+    #to replace index and momentum
+    to_replace: bool = False
+
+
+    #token pool sizes
+    index_pool_size : int = 100   
+    momentum_pool_size : int = 100
+
+    # if debug
+    debug: Optional[bool] = False
+
+    # trucate sequences
+    truncate: Optional[bool]= False
+
+    def to_dict(self):
         return asdict(self)
