@@ -8,69 +8,69 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 
-from config import TransformerConfig
-from constants import BOS_IDX, EOS_IDX, PAD_IDX, SPECIAL_SYMBOLS, UNK_IDX
-from model import Model
-from prefix_tokenizer import PrefixTokenizer
-from tokenizer import Tokenizer
+from .config import TransformerConfig
+from .model import Model
+
+from Modeling.constants import BOS_IDX, EOS_IDX, PAD_IDX, SPECIAL_SYMBOLS, UNK_IDX
+from Modeling.tokenizer import Tokenizer
+
 
 def create_tokenizer(df, config, index_pool_size, momentum_pool_size):
-    """Create a tokenizer and build source and target vocabularies."""
+    """Creates a tokenizer and builds source and target vocabularies.
 
+    Args:
+        df (pd.DataFrame): Dataset containing text samples.
+        config (object): Configuration object.
+        index_pool_size (int): Size of the index pool.
+        momentum_pool_size (int): Size of the momentum pool.
+
+    Returns:
+        tuple: Tokenizer object, source vocab, target vocab, source index-to-string, target index-to-string.
+    """
     tokenizer = Tokenizer(df, index_pool_size, momentum_pool_size, SPECIAL_SYMBOLS, UNK_IDX, config.to_replace)
-    
     src_vocab = tokenizer.build_src_vocab(config.seed)
-    src_itos = {value: key for key, value in src_vocab.get_stoi().items()}
+    src_itos = {v: k for k, v in src_vocab.get_stoi().items()}
     tgt_vocab = tokenizer.build_tgt_vocab()
-    tgt_itos = {value: key for key, value in tgt_vocab.get_stoi().items()}
-
+    tgt_itos = {v: k for k, v in tgt_vocab.get_stoi().items()}
     return tokenizer, src_vocab, tgt_vocab, src_itos, tgt_itos
 
+
 def init_distributed_mode(config):
-    """Initialize the distributed processing mode."""
+    """Initializes PyTorch distributed training mode."""
     dist.init_process_group(backend=config.backend, timeout=timedelta(minutes=30))
 
 
 def generate_eqn_mask(n: int, device: torch.device) -> torch.Tensor:
-    """
-    Generate an equation mask for the Transformer model.
+    """Generates an autoregressive mask for target equations.
 
     Args:
-        n (int): The size of the mask.
-        device (torch.device): The device on which to create the mask.
+        n (int): Sequence length.
+        device (torch.device): Device to place the mask on.
 
     Returns:
-        torch.Tensor: The equation mask.
+        torch.Tensor: Upper triangular causal mask.
     """
     mask = (torch.triu(torch.ones((n, n), device=device)) == 1).transpose(0, 1)
-    mask = mask.float().masked_fill(mask == 0, float(
-        '-inf')).masked_fill(mask == 1, float(0.0))
+    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, 0.0)
     return mask
 
 
 def create_mask(src: torch.Tensor, tgt: torch.Tensor, device: torch.device) -> tuple:
-    """
-    Create masks for source and target sequences.
+    """Creates source/target masks and padding masks for Transformer.
 
     Args:
-        src (torch.Tensor): Source sequence.
-        tgt (torch.Tensor): Target sequence.
-        device (torch.device): Device on which to create the masks.
+        src (torch.Tensor): Source tensor (S, B).
+        tgt (torch.Tensor): Target tensor (T, B).
+        device (torch.device): Computation device.
 
     Returns:
-        tuple: Tuple containing four masks: source mask, target mask, source padding mask, target padding mask.
+        tuple: (src_mask, tgt_mask, src_padding_mask, tgt_padding_mask)
     """
     src_seq_len = src.shape[0]
     tgt_seq_len = tgt.shape[0]
 
-    # Generate equation mask for target sequence
     tgt_mask = generate_eqn_mask(tgt_seq_len, device)
-
-    # Create source mask
-    src_mask = torch.zeros((src_seq_len, src_seq_len),
-                           device=device).type(torch.bool)
-
-    # Create source and target padding masks
+    src_mask = torch.zeros((src_seq_len, src_seq_len), device=device).type(torch.bool)
     src_padding_mask = (src == PAD_IDX).transpose(0, 1)
     tgt_padding_mask = (tgt == PAD_IDX).transpose(0, 1)
 
@@ -78,74 +78,101 @@ def create_mask(src: torch.Tensor, tgt: torch.Tensor, device: torch.device) -> t
 
 
 def generate_unique_random_integers(x, start=0, end=3000):
+    """Generates `x` unique integers from the range [start, end].
+
+    Args:
+        x (int): Number of integers.
+        start (int): Range start.
+        end (int): Range end.
+
+    Returns:
+        list: List of unique random integers.
+
+    Raises:
+        ValueError: If x exceeds the number of unique values in the range.
+    """
     if x > (end - start + 1):
-        raise ValueError(
-            "x cannot be greater than the range of unique values available")
+        raise ValueError("x cannot be greater than the range of unique values available")
     return random.sample(range(start, end), x)
 
 
 def decode_sequence(src: List[int], itos):
-    """Decode a sequence of token indices into a string."""
+    """Decodes a list of token indices into a string.
+
+    Args:
+        src (List[int]): Token indices.
+        itos (dict): Index-to-token mapping.
+
+    Returns:
+        str: Decoded string.
+    """
     return ''.join(itos[y] for y in src if y not in {PAD_IDX, BOS_IDX, EOS_IDX})
 
 
 def collate_fn(batch: list) -> tuple:
-    """
-    Collate function for batching sequences.
+    """Collates a batch of (src, tgt) pairs into padded tensors.
 
     Args:
-        batch (list): List of tuples containing source and target sequences.
+        batch (list): List of (src, tgt) tuples.
 
     Returns:
-        tuple: Tuple containing padded source batch and padded target batch.
+        tuple: Padded src and tgt tensors.
     """
-    src_batch, tgt_batch = [], []
-    for (src_sample, tgt_sample) in batch:
-        src_batch.append(src_sample)
-        tgt_batch.append(tgt_sample)
-
-    # Pad sequences in the batch
+    src_batch = [src for src, _ in batch]
+    tgt_batch = [tgt for _, tgt in batch]
     src_batch = pad_sequence(src_batch, padding_value=PAD_IDX)
     tgt_batch = pad_sequence(tgt_batch, padding_value=PAD_IDX)
-
     return src_batch, tgt_batch
 
 
 def calculate_line_params(point1, point2):
+    """Calculates slope and intercept of a line from two points.
 
+    Args:
+        point1 (tuple): (x1, y1)
+        point2 (tuple): (x2, y2)
+
+    Returns:
+        tuple: (slope, intercept)
+
+    Raises:
+        ValueError: If x1 == x2 (vertical line).
+    """
     x1, y1 = point1
     x2, y2 = point2
 
-    # Check if the x coordinates are the same to avoid division by zero
     if x1 == x2:
-        raise ValueError(
-            "The x coordinates of the two points must be different to define a straight line.")
+        raise ValueError("The x coordinates must differ to define a valid line.")
 
-    # Calculate the slope (m)
     m = (y2 - y1) / (x2 - x1)
-
-    # Calculate the intercept (b)
     b = y1 - m * x1
-
     return m, b
 
 
 def get_model(config):
-    """
-    Function to instantiate a Model object and initialize its parameters using 
-    previously defined global variables.
+    """Instantiates and initializes the Transformer model.
+
+    Args:
+        config (object): Configuration containing model hyperparameters.
 
     Returns:
-        Model: Initialized model object.
+        Model: Initialized Transformer model.
     """
-    model = Model(config.num_encoder_layers, config.num_decoder_layers, config.embedding_size,
-                  config.nhead, config.src_voc_size, config.tgt_voc_size, config.hidden_dim, config.dropout)
-
+    model = Model(
+        config.num_encoder_layers,
+        config.num_decoder_layers,
+        config.embedding_size,
+        config.nhead,
+        config.src_voc_size,
+        config.tgt_voc_size,
+        config.hidden_dim,
+        config.dropout
+    )
     for p in model.parameters():
         if p.dim() > 1:
             nn.init.xavier_uniform_(p)
-
     return model
+
 
 
 def parse_args():
@@ -190,6 +217,7 @@ def parse_args():
     # Training state
     parser.add_argument("--curr_epoch", type=int, required=True, help="Current epoch (for resuming)")
     parser.add_argument("--use_half_precision", action="store_true", help="Enable FP16 training")
+
 
     # Data loading
     parser.add_argument("--train_shuffle", type=bool, default=False, help="Shuffle training data")

@@ -109,7 +109,6 @@ class SkanformerTestConfig:
     src_max_len: int
     tgt_max_len: int
 
-
     # Size of vocabulary for source and target sequences
     src_voc_size: Optional[int] = None
     tgt_voc_size: Optional[int] = None

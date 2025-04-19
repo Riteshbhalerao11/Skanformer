@@ -2,11 +2,12 @@ import torchtext; torchtext.disable_torchtext_deprecation_warning()
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
-from Modeling.tokenizer import Tokenizer
 import argparse
 import random
 import os
 from sklearn.model_selection import train_test_split
+
+from Modeling.tokenizer import Tokenizer
 from Modeling.constants import SPECIAL_SYMBOLS,UNK_IDX
 
 # Argument parsing

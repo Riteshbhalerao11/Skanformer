@@ -1,8 +1,7 @@
-from fn_utils import causal_mask
 from torch.utils.data import Dataset
 import torch
 
-from constants import BOS_IDX, PAD_IDX, EOS_IDX
+from Modeling.constants import BOS_IDX, PAD_IDX, EOS_IDX
 
 class Data(Dataset):
     """
@@ -66,8 +65,9 @@ class Data(Dataset):
                 self.bos_token,
                 torch.tensor(src_ids, dtype=torch.int64),
                 self.eos_token,
-                torch.tensor([self.pad_token] *
-                             enc_num_padding_tokens, dtype=torch.int64),
+                self.pad_token
+                # torch.tensor([self.pad_token] *
+                #              enc_num_padding_tokens, dtype=torch.int64),
             ],
             dim=0,
         )
@@ -76,25 +76,27 @@ class Data(Dataset):
             [
                 self.bos_token,
                 torch.tensor(tgt_ids, dtype=torch.int64),
-                torch.tensor([self.pad_token] *
-                             dec_num_padding_tokens, dtype=torch.int64),
-            ],
-            dim=0,
-        )
-
-        label = torch.cat(
-            [
-                torch.tensor(tgt_ids, dtype=torch.int64),
                 self.eos_token,
-                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+                self.pad_token,
+                # torch.tensor([self.pad_token] *
+                #              dec_num_padding_tokens, dtype=torch.int64),
             ],
             dim=0,
         )
 
-        src_mask = (src_tensor != self.pad_token).unsqueeze(0).unsqueeze(0).int() # (1, 1, seq_len)
-        tgt_mask = (tgt_tensor != self.pad_token).unsqueeze(0).int() & causal_mask(tgt_tensor.size(0)) # (1, seq_len) & (1, seq_len, seq_len),
+        # label = torch.cat(
+        #     [
+        #         torch.tensor(tgt_ids, dtype=torch.int64),
+        #         self.eos_token,
+        #         torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+        #     ],
+        #     dim=0,
+        # )
 
-        return src_tensor, tgt_tensor, label, src_mask, tgt_mask
+        # src_mask = (src_tensor != self.pad_token).unsqueeze(0).unsqueeze(0).int() # (1, 1, seq_len)
+        # tgt_mask = (tgt_tensor != self.pad_token).unsqueeze(0).int() & causal_mask(tgt_tensor.size(0)) # (1, seq_len) & (1, seq_len, seq_len),
+
+        return src_tensor, tgt_tensor
 
     @staticmethod
     def get_data(df_train, df_test, df_valid, config, tokenizer, src_vocab,tgt_vocab):
@@ -105,7 +107,7 @@ class Data(Dataset):
             dict: Dictionary containing train, test, and valid datasets.
         """
         train = Data(df_train, tokenizer, config,src_vocab,tgt_vocab)
-        test = Data(df_test, tokenizer, config,src_vocab,tgt_vocab)
+        test = Data(df_test, tokenizer, config,src_vocab,tgt_vocab) if df_test is not None else None
         valid = Data(df_valid, tokenizer, config,src_vocab,tgt_vocab)
 
         return {'train': train, 'test': test, 'valid': valid}

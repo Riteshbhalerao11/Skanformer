@@ -1,15 +1,16 @@
-from config import SkanformerConfig
-from model import build_kanformer
-from tokenizer import Tokenizer
-from prefix_tokenizer import PrefixTokenizer
 import torch.distributed as dist
+from torch.nn.utils.rnn import pad_sequence
 import torch
 import random
 from typing import List
 import argparse
 from datetime import timedelta
 
-from constants import BOS_IDX, PAD_IDX, EOS_IDX, UNK_IDX, SPECIAL_SYMBOLS
+from .config import SkanformerConfig
+from .model import build_kanformer
+
+from Modeling.tokenizer import Tokenizer
+from Modeling.constants import BOS_IDX, PAD_IDX, EOS_IDX, UNK_IDX, SPECIAL_SYMBOLS
 
 def create_tokenizer(df, config, index_pool_size, momentum_pool_size):
     """Create a tokenizer and build source and target vocabularies."""
@@ -41,6 +42,50 @@ def causal_mask(size):
     """Create a causal mask for a sequence of given size."""
     mask = torch.triu(torch.ones((1, size, size)), diagonal=1).int()
     return mask == 0
+
+def generate_mask(src_tensor: torch.Tensor, tgt_tensor: torch.Tensor, pad_token: int):
+    """
+    Generate source and target masks for a batch of sequences.
+
+    """
+    device = src_tensor.device
+    _, seq_len_tgt = tgt_tensor.shape
+
+    # Source mask
+    src_mask = (src_tensor != pad_token).unsqueeze(1).unsqueeze(2)  # (batch_size, 1, 1, seq_len_src)
+
+    # Causal + padding mask for target
+    tgt_pad_mask = (tgt_tensor != pad_token).unsqueeze(1).unsqueeze(2)  # (batch_size, 1, 1, seq_len_tgt)
+    tgt_causal_mask = torch.tril(torch.ones((seq_len_tgt, seq_len_tgt), device=device)).bool()  # (seq_len_tgt, seq_len_tgt)
+    tgt_causal_mask = tgt_causal_mask.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len_tgt, seq_len_tgt)
+
+
+    tgt_mask = tgt_pad_mask & tgt_causal_mask  # (batch_size, 1, seq_len_tgt, seq_len_tgt)
+
+
+    return src_mask.to(device), tgt_mask.to(device)
+
+def collate_fn(batch: list) -> tuple:
+    """
+    Collate function for batching sequences.
+
+    Args:
+        batch (list): List of tuples containing source and target sequences.
+
+    Returns:
+        tuple: Tuple containing padded source batch and padded target batch.
+    """
+    src_batch, tgt_batch = [], []
+    for (src_sample, tgt_sample) in batch:
+        src_batch.append(src_sample)
+        tgt_batch.append(tgt_sample)
+
+    # Pad sequences in the batch
+    src_batch = pad_sequence(src_batch, batch_first=True, padding_value=PAD_IDX)
+    tgt_batch = pad_sequence(tgt_batch, batch_first=True, padding_value=PAD_IDX)
+
+    return src_batch, tgt_batch
+
 
 def calculate_line_params(point1, point2):
     """Calculate the slope and intercept of a line given two points."""

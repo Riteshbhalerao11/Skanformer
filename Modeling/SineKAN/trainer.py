@@ -1,251 +1,131 @@
 from tqdm import tqdm
-from data import Data
-from fn_utils import calculate_line_params, causal_mask, generate_unique_random_integers, get_model, decode_sequence
 import torch
 import os
-from torch.optim.lr_scheduler import LambdaLR
-from torch.cuda.amp import GradScaler
-from torch.nn.parallel import DistributedDataParallel as DDP
 import wandb
 import numpy as np
 
-from constants import BOS_IDX, PAD_IDX, EOS_IDX
+from torch.cuda.amp import GradScaler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.lr_scheduler import LambdaLR
 
-def sequence_accuracy(config,test_ds,tgt_itos,load_best=True, epoch=None,test_size=100):
-    """
-    Calculate the sequence accuracy.
+from .data import Data
+from .fn_utils import calculate_line_params, get_model, generate_mask, collate_fn
+from .predictor import sequence_accuracy
 
-    Args:
-        load_best (bool, optional): Whether to load the best model. Defaults to True.
-        epochs (int, optional): Number of epochs. Defaults to None.
-
-    Returns:
-        float: Sequence accuracy.
-    """
-    predictor = Predictor(config,load_best, epoch)
-    count = 0
-    num_samples = 10 if config.debug else test_size 
-    random_idx = generate_unique_random_integers(
-        num_samples, start=0, end=len(test_ds))
-    length = len(random_idx)
-    pbar = tqdm(range(length))
-    pbar.set_description("Seq_Acc_Cal")
-    for i in pbar:
-        original_tokens, predicted_tokens = predictor.predict(
-            test_ds[random_idx[i]],tgt_itos, raw_tokens=True)
-        original_tokens = original_tokens.detach().numpy().tolist()
-        predicted_tokens = predicted_tokens.detach().cpu().numpy().tolist()
-        original = decode_sequence(original_tokens,tgt_itos)
-        predicted = decode_sequence(predicted_tokens,tgt_itos)
-        if original == predicted:
-            count = count + 1
-        pbar.set_postfix(seq_accuracy=count / (i + 1))
-    return count / length
-
-
-class Predictor:
-    """
-    Class for generating predictions using a trained model.
-
-    Args:
-        config (object): Configuration object containing model and inference settings.
-        load_best (bool, optional): Whether to load the best model. Defaults to True.
-        epoch (int, optional): Epoch number to load a specific checkpoint.
-
-    Attributes:
-        model (Model): Trained model for prediction.
-        path (str): Path to the trained model.
-        device (str): Device for inference.
-        checkpoint (str): Model checkpoint path.
-        max_len (int): Maximum target sequence length for inference.
-    """
-
-    def __init__(self, config, load_best=True, epoch=None):
-        self.model = get_model(config)
-        
-        # Determine checkpoint path
-        if load_best:
-            self.checkpoint = f"{config.model_name}_best.pth"
-        else:
-            self.checkpoint = f"{config.model_name}_ep{epoch + 1}.pth"
-        
-        self.path = os.path.join(config.root_dir, self.checkpoint)
-        
-        # Set device for inference
-        self.device = (
-            f"cuda:{config.device}" if "cuda" not in str(config.device) else config.device
-        )
-        
-        # Load model state
-        state = torch.load(self.path, map_location=self.device)
-        self.model.load_state_dict(state['state_dict'])
-        self.model.to(self.device)
-        
-        # Maximum target length for inference
-        self.max_len = config.tgt_max_len
-        
-        print(f"Using epoch {state['epoch']} model for predictions.")
-
-    def greedy_decode(self, src, src_mask, max_len, start_symbol):
-        """
-        Generate a sequence using greedy decoding.
-
-        Args:
-            src (Tensor): Source input.
-            src_mask (Tensor): Mask for source input.
-            max_len (int): Maximum length of the generated sequence.
-            start_symbol (int): Start symbol for decoding.
-
-        Returns:
-            Tensor: Generated sequence.
-        """
-        src = src.to(self.device)
-        src_mask = src_mask.to(self.device)
-        src = src.unsqueeze(0)
-        src_mask = src_mask.unsqueeze(0)
-        memory = self.model.encode(src, src_mask)
-        memory = memory.to(self.device)
-        ys = torch.ones(1, 1).fill_(start_symbol).type(torch.long).to(self.device)
-        for _ in range(max_len - 1):
-            tgt_mask =(causal_mask(ys.size(1)).type(torch.bool)).to(self.device)
-            tgt_mask = tgt_mask.unsqueeze(0)
-            out = self.model.decode(memory,src_mask,ys,tgt_mask)
-            prob = self.model.project(out[:,-1])
-
-            _, next_word = torch.max(prob, dim=1)
-            next_word = next_word.item()
-
-            ys = torch.cat([ys, torch.ones(1, 1).type_as(src.data).fill_(next_word)], dim=1)
-            if next_word == EOS_IDX:
-                break
-        return ys
-
-    def predict(self, test_example, itos, raw_tokens=False):
-        """
-        Generate prediction for a test example.
-
-        Args:
-            test_example (dict): Test example containing input features.
-            raw_tokens (bool, optional): Whether to return raw tokens. Defaults to False.
-
-        Returns:
-            str or tuple: Decoded equation or tuple of original and predicted tokens.
-        """
-        self.model.eval()
-
-        src = test_example[0]
-
-        src_mask = test_example[3]
-        tgt_tokens = self.greedy_decode(
-            src, src_mask, max_len=self.max_len, start_symbol=BOS_IDX).flatten()
-
-        if raw_tokens:
-            original_tokens = test_example[1]
-            return original_tokens, tgt_tokens
-
-        decoded_eqn = ''
-        for t in tgt_tokens:
-            decoded_eqn += itos[int(t)]
-
-        return decoded_eqn
-
+from Modeling.constants import PAD_IDX
 
 class Trainer:
     """
-    Class for training Skanformer.
+    Class for training a SKanformer model.
 
     Args:
-        start_epoch (int, optional): Starting epoch number. Defaults to 0.
+        config (TransformerConfig): Configuration object with training parameters.
+        df_train (DataFrame): Training data.
+        df_valid (DataFrame): Validation data.
+        tokenizer (Tokenizer): Tokenizer for input data.
+        src_vocab (Vocab): Source vocabulary.
+        tgt_vocab (Vocab): Target vocabulary.
+        tgt_itos (dict): Index-to-token mapping for the target vocabulary.
 
     Attributes:
-        scaler (GradScaler): Gradient scaler for half-precision training.
-        dtype (torch.dtype): Data type for training.
-        dataloaders (dict): Dataloaders for train, validation, and test datasets.
-        root_dir (str): Root directory for saving models and logs.
-        device (str): Device for training.
-        current_epoch (int): Current epoch number.
-        best_val_loss (float): Best validation loss.
-        train_loss_list (list): List of training losses.
-        valid_loss_list (list): List of validation losses.
-        valid_accuracy_tok_list (list): List of validation token accuracies.
-        model (Model): Model for training.
-        optimizer (Optimizer): Optimizer for training.
-        scheduler (Scheduler): Learning rate scheduler.
-        resume_best (bool): Whether to resume from the last best saved model.
-        save_freq (int): Frequency of saving in terms of epochs.
-        save_last (bool): Whether to save model after complete training.
+        scaler (GradScaler): Gradient scaler for automatic mixed precision training.
+        dtype (torch.dtype): Data type (float16 if half precision is enabled, else float32).
+        local_rank (int): Local rank of the process in distributed training.
+        global_rank (int): Global rank of the process in distributed training.
+        device (int): CUDA device ID used for training.
+        config (TransformerConfig): Configuration object passed during initialization.
+        is_master (bool): Flag indicating if this is the master (rank 0) process.
+        run (wandb.Run): Weights & Biases run object (only initialized on master).
+        dataloaders (dict): Dictionary containing train, validation, and test dataloaders.
+        valid_ds (Dataset): Preprocessed valid dataset.
+        warmup_steps (int): Number of warmup steps for learning rate scheduling.
+        ep_steps (int): Number of steps per epoch.
+        root_dir (str): Directory where checkpoints are saved.
+        current_epoch (int): The current epoch number.
+        best_val_loss (float): Best validation loss observed.
+        train_loss_list (list): List of training losses over epochs.
+        valid_loss_list (list): List of validation losses over epochs.
+        model (nn.Module): Model used for training.
+        ddp_model (nn.Module): DistributedDataParallel-wrapped model.
+        optimizer (torch.optim.Optimizer): Optimizer used for training.
+        warm_scheduler (LambdaLR): Warmup learning rate scheduler.
+        lr_scheduler (LambdaLR): Main learning rate scheduler.
+        save_freq (int): Frequency (in epochs) at which to save checkpoints.
+        test_freq (int): Frequency (in epochs) at which to evaluate test accuracy.
+        resume_best (bool): Whether to resume training from the best saved checkpoint.
+        save_last (bool): Whether to save the final model at the end of training.
+        lr (float): Learning rate to be used for optimization.
+        global_step (int): Global step counter used for logging and scheduling.
+        tgt_itos (dict): Index-to-string mapping for decoding model outputs.
+        ckp_paths (list): List of checkpoint filenames in the root directory (excluding 'best' models).
+        save_limit (int): Maximum number of checkpoints to keep.
+        is_constant_lr (bool): Flag for using constant learning rate.
     """
 
-    def __init__(self, config, df_train, df_test, df_valid, tokenizer, src_vocab, tgt_vocab, tgt_itos):
-        # Initialize half-precision training
+    def __init__(self, config, df_train, df_valid, tokenizer, src_vocab, tgt_vocab, tgt_itos):
+
+        self.config = config
+        self.device = int(os.environ["LOCAL_RANK"])
+        self.local_rank = self.device
+        self.global_rank = int(os.environ["RANK"])
+        self.is_master = self.local_rank == 0
+
         self.scaler = GradScaler()
         self.dtype = torch.float16 if config.use_half_precision else torch.float32
         self.is_constant_lr = config.is_constant_lr
-        
-        # Set device ranks
-        self.local_rank = int(os.environ["LOCAL_RANK"])
-        self.global_rank = int(os.environ["RANK"])
-        self.device = self.local_rank
-        
+
         if not config.debug:
             print(
                 f"PROCESS ID: {int(os.environ['SLURM_PROCID'])} ; "
                 f"TORCH GLOBAL RANK: {self.global_rank} ; "
                 f"TORCH LOCAL RANK: {self.local_rank}"
             )
-        
-        # Config setup
-        self.config = config
+
         self.config.device = self.device
-        self.is_master = self.local_rank == 0
-        
+
         if self.is_master:
             wandb.login()
             self.run = wandb.init(
                 project=config.project_name,
                 name=config.run_name,
                 dir=config.root_dir,
-                config=config.to_dict()
+                config=config.to_dict(),
+                resume="allow",
+                id=config.run_id
             )
-        
-        # Prepare dataloaders
-        self.dataloaders, self.test_ds = self._prepare_dataloaders(
-            df_train, df_test, df_valid, tokenizer, src_vocab, tgt_vocab
+
+        self.dataloaders, self.valid_ds = self._prepare_dataloaders(
+            df_train, df_valid, tokenizer, src_vocab, tgt_vocab
         )
-        
-        # Training parameters
-        self.warmup_steps = int(
-            config.warmup_ratio * len(self.dataloaders['train']) * config.epochs
-        )
-        self.ep_steps = len(self.dataloaders['train'])
+
+        self.ep_steps = len(self.dataloaders["train"])
+        self.warmup_steps = int(config.warmup_ratio * self.ep_steps * config.epochs)
+
         self.root_dir = config.root_dir
         self.current_epoch = config.curr_epoch
-        self.best_val_loss = float('inf')
+        self.best_val_loss = float("inf")
         self.train_loss_list = []
         self.valid_loss_list = []
-        
-        # Model and optimizer setup
+
         self.model, self.ddp_model = self._prepare_model()
         self.optimizer = self._prepare_optimizer()
         self.warm_scheduler, self.lr_scheduler = self._prepare_scheduler()
-        
-        # Saving and testing configuration
+
         self.save_freq = config.save_freq
         self.test_freq = config.test_freq
         self.resume_best = config.resume_best
         self.save_last = config.save_last
         self.lr = config.update_lr
         self.global_step = 0
-        
-        # Target vocabulary
+
         self.tgt_itos = tgt_itos
-        
-        # Checkpoint management
+
         self.ckp_paths = [
             file for file in os.listdir(config.root_dir)
-            if ('best' not in file and config.model_name in file)
+            if "best" not in file and config.model_name in file
         ]
         self.save_limit = config.save_limit
+
 
     def criterion(self, y_pred, y_true):
         """
@@ -313,7 +193,7 @@ class Trainer:
 
         return warm_scheduler, lr_scheduler
 
-    def _prepare_dataloaders(self, df_train, df_test, df_valid, tokenizer, src_vocab, tgt_vocab):
+    def _prepare_dataloaders(self, df_train, df_valid, tokenizer, src_vocab, tgt_vocab):
         """
         Prepare dataloaders for training, validation, and testing.
 
@@ -321,21 +201,22 @@ class Trainer:
             dict: Dictionary containing train, validation, and test dataloaders.
         """
         datasets = Data.get_data(
-            df_train, df_test, df_valid, self.config, tokenizer,src_vocab, tgt_vocab)
+            df_train, None, df_valid, self.config, tokenizer,src_vocab, tgt_vocab)
         sampler_train = torch.utils.data.DistributedSampler(datasets['train'], num_replicas=self.config.world_size,
-                                                            rank=self.device, shuffle=self.config.train_shuffle)
+                                                            rank=self.device, shuffle=self.config.train_shuffle, 
+                                                            )
 
         train_loader = torch.utils.data.DataLoader(datasets['train'], batch_size=self.config.training_batch_size,
                                                    sampler=sampler_train, num_workers=self.config.num_workers,
-                                                   pin_memory=self.config.pin_memory)
+                                                   pin_memory=self.config.pin_memory, collate_fn=collate_fn)
 
         dataloaders = {
             'train': train_loader,
             'valid': torch.utils.data.DataLoader(datasets['valid'],
                                                  batch_size=self.config.valid_batch_size, shuffle=self.config.valid_shuffle,
-                                                 num_workers=self.config.num_workers, pin_memory=self.config.pin_memory),
+                                                 num_workers=self.config.num_workers, pin_memory=self.config.pin_memory, collate_fn=collate_fn),
         }
-        return dataloaders,datasets['test']
+        return dataloaders,datasets['valid']
 
     def load_model(self, resume=False, epoch=None, lr=None):
         """
@@ -382,30 +263,31 @@ class Trainer:
         """
         self.ddp_model.train()
         pbar = tqdm(self.dataloaders['train'],
-                    total=len(self.dataloaders['train']),disable= (not self.is_master))
-        pbar.set_description(
-            f"[{self.current_epoch+1}/{self.config.epochs}] Train")
+                    total=len(self.dataloaders['train']), disable=(not self.is_master))
+        pbar.set_description(f"[{self.current_epoch+1}/{self.config.epochs}] Train")
+
         running_loss = 0.0
         total_samples = 0
 
-        for src, tgt,label,src_mask, tgt_mask in pbar:
+        for src, tgt in pbar:
+            # Mask for decoder should match decoder input size i.e. tgt[:, :-1]
+            src_mask, tgt_mask = generate_mask(src, tgt[:, :-1], PAD_IDX)
             src = src.to(self.device)
             tgt = tgt.to(self.device)
             bs = src.size(0)
             src_mask = src_mask.to(self.device)
             tgt_mask = tgt_mask.to(self.device)
-            label = label.to(self.device)
 
             with torch.autocast(device_type='cuda', dtype=self.dtype):
+                encoder_output = self.ddp_model.module.encode(src, src_mask)
+                decoder_output = self.ddp_model.module.decode(
+                    encoder_output, src_mask, tgt[:, :-1], tgt_mask)
+                logits = self.ddp_model.module.project(decoder_output)
+                loss = self.criterion(logits.reshape(-1, logits.shape[-1]), tgt[:, 1:].reshape(-1))
 
-                encoder_output = self.ddp_model.module.encode(src, src_mask) # (B, seq_len, d_model)
-                decoder_output = self.ddp_model.module.decode(encoder_output, src_mask, tgt, tgt_mask) # (B, seq_len, d_model)
-                logits= self.ddp_model.module.project(decoder_output)
-                # Calculate loss
-                loss = self.criterion(logits.reshape(-1, logits.shape[-1]), label.reshape(-1))
             if ((self.global_step % self.config.log_freq == 0) and self.is_master):
-                self.run.log({'train/loss': loss.item(),
-                          'global_step': self.global_step})
+                self.run.log({'train/loss': loss.item(), 'global_step': self.global_step})
+
             running_loss += loss.item() * bs
             total_samples += bs
             avg_loss = running_loss / total_samples
@@ -419,74 +301,76 @@ class Trainer:
             if self.config.clip_grad_norm > 0:
                 torch.nn.utils.clip_grad_norm_(
                     self.ddp_model.module.parameters(), self.config.clip_grad_norm)
-            
+
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
             grads = [
                 param.grad.detach().flatten()
                 for param in self.ddp_model.module.parameters()
-                if param.grad is not None ]
+                if param.grad is not None
+            ]
             norm = torch.cat(grads).norm()
-           
-            if (self.global_step <= self.warmup_steps):
+
+            if self.global_step <= self.warmup_steps:
                 if self.is_master:
                     lr = self.optimizer.param_groups[0]['lr']
-                    self.run.log({'train/lr': lr , 'global_step': self.global_step})
+                    self.run.log({'train/lr': lr, 'global_step': self.global_step})
                 if self.warmup_steps:
                     self.warm_scheduler.step()
             else:
                 if (self.global_step % self.config.log_freq == 0) and self.is_master:
                     lr = self.optimizer.param_groups[0]['lr']
                     self.run.log({'train/lr': lr, 'global_step': self.global_step})
-                
+
             if ((self.global_step % self.config.log_freq) == 0) and self.is_master:
-                self.run.log({'train/epoch': self.global_step /
-                          self.ep_steps, 'global_step': self.global_step})
+                self.run.log({'train/epoch': self.global_step / self.ep_steps,
+                            'global_step': self.global_step})
                 self.run.log({'train/grad_norm': norm, 'global_step': self.global_step})
 
-            
             self.global_step += 1
 
         return avg_loss
 
-    def evaluate(self, phase):
+
+    def evaluate(self):
         """
         Evaluate the model on the validation or test set.
 
-        Args:
-            phase (str): Phase of evaluation ('valid' or 'test').
-
         Returns:
-            tuple: Tuple containing average token accuracy and average loss.
+            float: Average loss for the evaluation set.
         """
         self.ddp_model.eval()
-        pbar = tqdm(self.dataloaders[phase],
-                    total=len(self.dataloaders[phase]), disable= (not self.is_master))
-        pbar.set_description(
-            f"[{self.current_epoch+1}/{self.config.epochs}] {phase.capitalize()}")
+        pbar = tqdm(self.dataloaders["valid"],
+                    total=len(self.dataloaders["valid"]), disable=(not self.is_master))
+        pbar.set_description(f"[{self.current_epoch+1}/{self.config.epochs}] Valid")
+
         running_loss = 0.0
         total_samples = 0
 
         with torch.no_grad():
-            for src, tgt,label,src_mask, tgt_mask in pbar:
+            for src, tgt in pbar:
                 src = src.to(self.device)
                 tgt = tgt.to(self.device)
                 bs = src.size(0)
+
+                src_mask, tgt_mask = generate_mask(src, tgt[:, :-1], PAD_IDX)
                 src_mask = src_mask.to(self.device)
                 tgt_mask = tgt_mask.to(self.device)
-                label = label.to(self.device)
 
-                encoder_output = self.ddp_model.module.encode(src, src_mask) # (B, seq_len, d_model)
-                decoder_output = self.ddp_model.module.decode(encoder_output, src_mask, tgt, tgt_mask) # (B, seq_len, d_model)
-                logits= self.ddp_model.module.project(decoder_output)
-                loss = self.criterion(logits.reshape(-1, logits.shape[-1]), label.reshape(-1))
+                encoder_output = self.ddp_model.module.encode(src, src_mask)
+                decoder_output = self.ddp_model.module.decode(
+                    encoder_output, src_mask, tgt[:, :-1], tgt_mask)
+                logits = self.ddp_model.module.project(decoder_output)
+
+                loss = self.criterion(logits.reshape(-1, logits.shape[-1]), tgt[:, 1:].reshape(-1))
 
                 running_loss += loss.item() * bs
                 total_samples += bs
                 avg_loss = running_loss / total_samples
 
         return avg_loss
+
 
     def _save_model(self, checkpoint_name):
         """
@@ -523,7 +407,7 @@ class Trainer:
         """
         Test sequence accuracy and save results to a file.
         """
-        test_accuracy_seq = sequence_accuracy(self.config,self.test_ds,self.tgt_itos,load_best, epochs)
+        test_accuracy_seq = sequence_accuracy(self.config,self.valid_ds,self.tgt_itos,load_best, epochs)
         self.run.log({'test/acc': test_accuracy_seq,
                   'global_step': self.global_step})
         print(f"Test Accuracy: {round(test_accuracy_seq, 4)}")
@@ -548,7 +432,7 @@ class Trainer:
         for self.current_epoch in range(self.current_epoch, self.config.epochs):
 
             training_loss = self._train_epoch()
-            valid_loss = self.evaluate("valid")
+            valid_loss = self.evaluate()
             if self.global_step >= self.warmup_steps:
                 if self.is_constant_lr is False:
                     self.lr_scheduler.step(self.current_epoch)

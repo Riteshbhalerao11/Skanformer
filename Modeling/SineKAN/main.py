@@ -2,13 +2,13 @@ import torchtext; torchtext.disable_torchtext_deprecation_warning()
 import pandas as pd
 import numpy as np
 import random
-from fn_utils import create_config_from_args, create_tokenizer, init_distributed_mode,  parse_args
 import torch
-from trainer import Trainer
 import os
 
+from .fn_utils import create_config_from_args, create_tokenizer, init_distributed_mode,  parse_args
+from .trainer import Trainer
 
-def main(config, df_train,df_test,df_valid,tokenizer,src_vocab,tgt_vocab,tgt_itos):
+def main(config, df_train,df_valid,tokenizer,src_vocab,tgt_vocab,tgt_itos):
     print(config.to_dict())
     torch.manual_seed(config.seed)
     torch.cuda.manual_seed(config.seed)
@@ -16,7 +16,7 @@ def main(config, df_train,df_test,df_valid,tokenizer,src_vocab,tgt_vocab,tgt_ito
     random.seed(config.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
-    trainer = Trainer(config,df_train,df_test,df_valid,tokenizer,src_vocab,tgt_vocab,tgt_itos)
+    trainer = Trainer(config,df_train,df_valid,tokenizer,src_vocab,tgt_vocab,tgt_itos)
     trainer.fit()
 
 
@@ -50,5 +50,5 @@ if __name__ == '__main__':
     print(f"TRAIN SAMPLES : {df_train.shape}")
     print("Data loading complete")
 
-    main(config,df_train,df_test,df_valid,tokenizer,src_vocab,tgt_vocab,tgt_itos)
+    main(config,df_train,df_valid,tokenizer,src_vocab,tgt_vocab,tgt_itos)
     torch.distributed.destroy_process_group()

@@ -1,10 +1,11 @@
-from trainer import sequence_accuracy
-from fn_utils import create_tokenizer, parse_args, create_config_from_args, init_distributed_mode
-from data import Data
 import pandas as pd
 import numpy as np
 import os
 import torch
+
+from .trainer import sequence_accuracy
+from .fn_utils import create_tokenizer, parse_args, create_config_from_args, init_distributed_mode
+from .data import Data
 
 # Parse arguments and create configuration
 args = parse_args()

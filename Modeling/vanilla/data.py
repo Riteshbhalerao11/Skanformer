@@ -1,7 +1,7 @@
 from torch.utils.data import Dataset
 import torch
 
-from constants import BOS_IDX, PAD_IDX, EOS_IDX
+from Modeling.constants import BOS_IDX, PAD_IDX, EOS_IDX
 
 class Data(Dataset):
     """
@@ -48,16 +48,16 @@ class Data(Dataset):
         src_ids = self.src_vocab(src_tokenized)
         tgt_ids = self.tgt_vocab(tgt_tokenized)
 
-        enc_num_padding_tokens = self.config.src_max_len - len(src_ids) - 2
-        dec_num_padding_tokens = self.config.tgt_max_len - len(tgt_ids) - 2
+        enc_excess_tokens = self.config.src_max_len - len(src_ids) - 3
+        dec_excess_tokens = self.config.tgt_max_len - len(tgt_ids) - 3
 
         if self.config.truncate:
-            if enc_num_padding_tokens < 0:
-                src_ids = src_ids[:self.config.src_max_len-2]
-            if dec_num_padding_tokens < 0:
-                tgt_ids = tgt_ids[:self.config.tgt_max_len-2]
+            if enc_excess_tokens < 0:
+                src_ids = src_ids[:self.config.src_max_len-3]
+            if dec_excess_tokens < 0:
+                tgt_ids = tgt_ids[:self.config.tgt_max_len-3]
         else:
-            if enc_num_padding_tokens < 0 or dec_num_padding_tokens < 0:
+            if enc_excess_tokens < 0 or dec_excess_tokens < 0:
                 raise ValueError("Sentence is too long")
 
         src_tensor = torch.cat(
@@ -65,6 +65,7 @@ class Data(Dataset):
                 self.bos_token,
                 torch.tensor(src_ids, dtype=torch.int64),
                 self.eos_token,
+                self.pad_token,
             ],
             dim=0,
         )
@@ -73,6 +74,7 @@ class Data(Dataset):
                 self.bos_token,
                 torch.tensor(tgt_ids, dtype=torch.int64),
                 self.eos_token,
+                self.pad_token,
 
             ],
             dim=0,
@@ -89,7 +91,7 @@ class Data(Dataset):
             dict: Dictionary containing train, test, and valid datasets.
         """
         train = Data(df_train, tokenizer, config,src_vocab,tgt_vocab)
-        test = Data(df_test, tokenizer, config,src_vocab,tgt_vocab)
+        test = Data(df_test, tokenizer, config,src_vocab,tgt_vocab) if df_test is not None else None
         valid = Data(df_valid, tokenizer, config,src_vocab,tgt_vocab)
 
         return {'train': train, 'test': test, 'valid': valid}
