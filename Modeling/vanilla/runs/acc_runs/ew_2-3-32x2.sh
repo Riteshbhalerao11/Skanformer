@@ -7,7 +7,7 @@ module load pytorch
 
 nvidia-smi
 
-srun torchrun --standalone --nproc_per_node 4 seq_acc.py \
+srun torchrun --standalone --nproc_per_node 4 -m modeling.vanilla.seq_acc \
     --project_name "Dummy_Transformer_Project" \
     --run_name "dummy_run" \
     --model_name "dummy_transformer" \

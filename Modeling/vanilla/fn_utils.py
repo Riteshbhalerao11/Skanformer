@@ -11,8 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 from .config import TransformerConfig
 from .model import Model
 
-from Modeling.constants import BOS_IDX, EOS_IDX, PAD_IDX, SPECIAL_SYMBOLS, UNK_IDX
-from Modeling.tokenizer import Tokenizer
+from modeling.constants import BOS_IDX, EOS_IDX, PAD_IDX, SPECIAL_SYMBOLS, UNK_IDX
+from modeling.tokenizer import Tokenizer
 
 
 def create_tokenizer(df, config, index_pool_size, momentum_pool_size):

@@ -10,7 +10,7 @@ from .fn_utils import (
     generate_unique_random_integers,
     get_model
 )
-from Modeling.constants import PAD_IDX, BOS_IDX, EOS_IDX
+from modeling.constants import PAD_IDX, BOS_IDX, EOS_IDX
 
 
 class Predictor:

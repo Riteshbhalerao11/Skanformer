@@ -16,7 +16,7 @@ from .fn_utils import (
     get_model
 )
 from .data import Data
-from Modeling.constants import PAD_IDX
+from modeling.constants import PAD_IDX
 
 
 class Trainer():

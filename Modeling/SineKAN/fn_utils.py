@@ -9,8 +9,8 @@ from datetime import timedelta
 from .config import SkanformerConfig
 from .model import build_kanformer
 
-from Modeling.tokenizer import Tokenizer
-from Modeling.constants import BOS_IDX, PAD_IDX, EOS_IDX, UNK_IDX, SPECIAL_SYMBOLS
+from modeling.tokenizer import Tokenizer
+from modeling.constants import BOS_IDX, PAD_IDX, EOS_IDX, UNK_IDX, SPECIAL_SYMBOLS
 
 def create_tokenizer(df, config, index_pool_size, momentum_pool_size):
     """Create a tokenizer and build source and target vocabularies."""

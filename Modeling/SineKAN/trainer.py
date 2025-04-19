@@ -12,7 +12,7 @@ from .data import Data
 from .fn_utils import calculate_line_params, get_model, generate_mask, collate_fn
 from .predictor import sequence_accuracy
 
-from Modeling.constants import PAD_IDX
+from modeling.constants import PAD_IDX
 
 class Trainer:
     """

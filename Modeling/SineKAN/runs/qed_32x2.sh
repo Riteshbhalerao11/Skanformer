@@ -7,7 +7,7 @@ module load pytorch
 
 nvidia-smi
 
-srun torchrun --standalone --nproc_per_node 2 main.py \
+srun torchrun --standalone --nproc_per_node 2 modeling.sinekan.main \
     --project_name "Dummy_Transformer_Project" \
     --run_name "dummy_run" \
     --model_name "dummy_transformer" \

@@ -7,7 +7,7 @@ from .fn_utils import (
     causal_mask, generate_unique_random_integers, 
     get_model, decode_sequence)
 
-from Modeling.constants import BOS_IDX, PAD_IDX, EOS_IDX
+from modeling.constants import BOS_IDX, PAD_IDX, EOS_IDX
 
 class Predictor:
     """
