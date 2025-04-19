@@ -5,17 +5,17 @@ This repository contains the source code for the above-mentioned title under the
 
 ```
 .
-├── Data_generation/
+├── data_generation/
 │   ├── ew_general_diag.cpp
 │   ├── qcd_general_diag.cpp
 │   ├── qed_eea_diag.cpp
 │   └── qed_general_diag.cpp
-├── Data_preprocess/
+├── data_preprocess/
 │   ├── augment_data.py
 │   ├── sequence_count.py
 │   └── splitter.py
-├── Modelling/
-│   ├── SineKAN/
+├── modelling/
+│   ├── sinekan/
 │   |── vanilla/
 ├── .gitignore
 └── README.md
@@ -34,9 +34,9 @@ This repository contains the source code for the above-mentioned title under the
    This folder contains scripts for preprocessing the generated data before tokenization.
    - `normalize_data.py`: Replaces & normalizes the MARTY-generated indices in the sequences with custom numbered indices to limit the total number of tokens in vocabulary and bring uniformity.    
 
-3. **Modeling/**  
+3. **modeling/**  
    This directory contains the architecture implementations of different models along with training,inference & hyper parameter tuning scripts .
-   - `SineKAN/`: Contains the implementation of the **S-KANformer** model.
+   - `sinekan/`: Contains the implementation of the **S-KANformer** model.
    - `vanilla/`: Contains the vanilla transformer model used as a baseline for comparison.
 
 
